@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Applicant Care Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',sans-serif;background:#f0f4f8;color:#1e2a3a;font-size:14px;min-height:100vh}
+/* HEADER */
+.hdr{background:#fff;border-bottom:1px solid #e2e8f0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.hdr-left{display:flex;align-items:center;gap:10px}
+.hdr-icon{background:#0f766e;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.95rem}
+.hdr-title{font-size:.98rem;font-weight:700;letter-spacing:-.02em}
+.hdr-title span{color:#0f766e}
+.hdr-right{display:flex;gap:8px;align-items:center}
+.badge{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:20px;padding:3px 10px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:#64748b}
+.badge b{color:#0f766e}
+/* MAIN */
+.main{max-width:1440px;margin:0 auto;padding:22px 28px 60px}
+/* UPLOAD */
+.upload{background:#fff;border:2px dashed #cbd5e1;border-radius:14px;padding:52px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:22px}
+.upload:hover,.upload.drag{border-color:#0f766e;background:#f0fdfa}
+.upload.done{padding:14px 22px;border-style:solid;border-color:#0f766e;background:#f0fdfa;text-align:left}
+.upload-body{pointer-events:none}
+.upload-done-row{display:flex;align-items:center;gap:12px;pointer-events:none}
+.u-ico{font-size:2.6rem;margin-bottom:8px}
+.u-title{font-size:1rem;font-weight:700;margin-bottom:4px}
+.u-sub{font-size:.8rem;color:#64748b}
+#fileInput{display:none}
+/* DASHBOARD */
+#dash{display:none}
+#dash.on{display:block}
+/* FILTERS */
+.filters{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fl{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em}
+select{background:#f8fafc;border:1px solid #e2e8f0;color:#1e2a3a;border-radius:8px;padding:7px 10px;font-size:.8rem;font-family:'Outfit',sans-serif;cursor:pointer;outline:none;transition:border-color .15s;min-width:120px}
+select:focus{border-color:#0f766e}
+.btn-reset{background:#fff5f5;border:1px solid #fecaca;color:#dc2626;border-radius:8px;padding:7px 14px;font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:600;cursor:pointer;align-self:flex-end;transition:.15s}
+.btn-reset:hover{background:#fee2e2}
+.f-count{align-self:flex-end;margin-left:auto;font-size:.78rem;color:#64748b}
+.f-count b{color:#0f766e;font-weight:700}
+/* KPIs */
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:.2s}
+.kpi:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
+.kpi-bar{position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0}
+.kpi-lbl{font-size:.68rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+.kpi-val{font-size:1.85rem;font-weight:800;line-height:1;letter-spacing:-.03em;margin-bottom:3px}
+.kpi-note{font-size:.7rem;color:#94a3b8}
+/* SECTION */
+.sec{font-size:.65rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em;display:flex;align-items:center;gap:8px;margin-bottom:12px;margin-top:4px}
+.sec::after{content:'';flex:1;height:1px;background:#e2e8f0}
+/* GRIDS */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+.g21{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px}
+.g12{display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:14px}
+.gf{margin-bottom:14px}
+/* CARD */
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.c-title{font-size:.85rem;font-weight:700;color:#1e2a3a;margin-bottom:2px}
+.c-sub{font-size:.7rem;color:#94a3b8;margin-bottom:14px}
+canvas{max-height:260px}
+/* STATUS BOXES */
+.sb-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;height:calc(100% - 40px)}
+.sb{border-radius:10px;padding:14px 16px}
+.sb-n{font-size:1.55rem;font-weight:800;line-height:1;margin-bottom:3px}
+.sb-l{font-size:.72rem;color:#475569;font-weight:500}
+.sb-p{font-size:.7rem;font-weight:700;margin-top:3px}
+/* AGING BOXES */
+.ag-boxes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.ag-box{border-radius:10px;padding:12px 14px;border:1px solid #e2e8f0}
+.ag-n{font-size:1.4rem;font-weight:800;line-height:1}
+.ag-l{font-size:.68rem;color:#64748b;margin-top:3px}
+.ag-p{font-size:.7rem;font-weight:700;margin-top:2px}
+/* TABLES */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.78rem}
+th{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;border-bottom:2px solid #e2e8f0;padding:9px 12px;text-align:left;white-space:nowrap;background:#f8fafc}
+td{padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#475569}
+tr:hover td{background:#f8faff;color:#1e2a3a}
+tr:last-child td{border-bottom:none}
+/* PILLS */
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:.67rem;font-weight:600;white-space:nowrap}
+.pg{background:#dcfce7;color:#16a34a}
+.pr{background:#fee2e2;color:#dc2626}
+.pa{background:#fef3c7;color:#d97706}
+.pb{background:#dbeafe;color:#2563eb}
+.pp{background:#ede9fe;color:#7c3aed}
+.pt{background:#ccfbf1;color:#0f766e}
+.pgr{background:#f1f5f9;color:#64748b}
+@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.g2,.g3,.g21,.g12{grid-template-columns:1fr}}
+@media(max-width:600px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.main{padding:12px}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-icon">🎯</div>
+    <div class="hdr-title">Applicant <span>Care</span> · Concern Dashboard</div>
+  </div>
+  <div class="hdr-right">
+    <div class="badge">2026</div>
+    <div class="badge"><b id="hCount">—</b> records</div>
+    <div class="badge" id="hFile">No file loaded</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- UPLOAD -->
+  <div class="upload" id="uploadZone">
+    <div class="upload-body" id="uDefault">
+      <div class="u-ico">📂</div>
+      <div class="u-title">Upload Concern Dataset</div>
+      <div class="u-sub">Drag &amp; drop or click · Supports .xlsx / .xls</div>
+    </div>
+    <div class="upload-done-row" id="uDone" style="display:none">
+      <span style="font-size:1.5rem">✅</span>
+      <div>
+        <div class="u-title" id="uName">—</div>
+        <div class="u-sub" id="uInfo">—</div>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dash">
+
+    <!-- FILTERS -->
+    <div class="filters">
+      <div class="fg"><div class="fl">Year</div><select id="fYear"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Month</div><select id="fMonth"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Week</div><select id="fWeek"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Platform</div><select id="fPlatform"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Location</div><select id="fLocation"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Main Concern</div><select id="fConcern"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Concern Status</div><select id="fStatus"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Status Detail</div><select id="fDetail"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Ambassador</div><select id="fAmb"><option value="">All</option></select></div>
+      <div class="fg"><div class="fl">Age Category</div><select id="fAge"><option value="">All</option></select></div>
+      <button class="btn-reset" onclick="resetFilters()">✕ Reset</button>
+      <div class="f-count">Showing <b id="fCount">—</b> records</div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <!-- SECTION 1 -->
+    <div class="sec">📋 Concern Status Overview</div>
+    <div class="g12">
+      <div class="card">
+        <div class="c-title">Status at a Glance</div>
+        <div class="c-sub">Open vs Closed · Status Detail breakdown</div>
+        <div class="sb-grid" id="sbGrid"></div>
+      </div>
+      <div class="card">
+        <div class="c-title">Status Detail Distribution</div>
+        <div class="c-sub">Proportion of each resolution state</div>
+        <canvas id="cStatusDetail"></canvas>
+      </div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <div class="sec">📌 Concern Categories</div>
+    <div class="g2">
+      <div class="card">
+        <div class="c-title">Main Concern Volume</div>
+        <div class="c-sub">Cases per concern category</div>
+        <canvas id="cMainConcern"></canvas>
+      </div>
+      <div class="card">
+        <div class="c-title">Sub-Category (L2) · Top 10</div>
+        <div class="c-sub">Second-level concern breakdown</div>
+        <canvas id="cL2"></canvas>
+      </div>
+    </div>
+
+    <!-- SECTION 3 -->
+    <div class="sec">📅 Volume Trends</div>
+    <div class="g2">
+      <div class="card">
+        <div class="c-title">Monthly Volume</div>
+        <div class="c-sub">Harvest month vs Response month</div>
+        <canvas id="cMonthly"></canvas>
+      </div>
+      <div class="card">
+        <div class="c-title">Weekly Volume</div>
+        <div class="c-sub">Concerns received per week</div>
+        <canvas id="cWeekly"></canvas>
+      </div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <div class="sec">📡 Channel &amp; Location</div>
+    <div class="g2">
+      <div class="card">
+        <div class="c-title">Volume by Platform</div>
+        <div class="c-sub">Which channel receives the most concerns</div>
+        <canvas id="cPlatform"></canvas>
+      </div>
+      <div class="card">
+        <div class="c-title">Volume by Site Location</div>
+        <div class="c-sub">Concerns per site/location</div>
+        <canvas id="cLocation"></canvas>
+      </div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <div class="sec">⏱ Response Aging</div>
+    <div class="g21">
+      <div class="card">
+        <div class="c-title">Aging Response Breakdown</div>
+        <div class="c-sub">Count of concerns per response time bucket (days)</div>
+        <canvas id="cAging"></canvas>
+      </div>
+      <div class="card">
+        <div class="c-title">Age Category Split</div>
+        <div class="c-sub">0–3 Days vs 4–6 Days</div>
+        <div class="ag-boxes" id="agBoxes"></div>
+        <canvas id="cAgeCat" style="max-height:170px"></canvas>
+      </div>
+    </div>
+
+    <!-- SECTION 6 -->
+    <div class="sec">👤 Ambassador Performance</div>
+    <div class="gf">
+      <div class="card">
+        <div class="c-title">Care Ambassador Workload Summary</div>
+        <div class="c-sub">Cases, closure rate, and aging profile per ambassador</div>
+        <div class="tw" id="tAmb"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 7 -->
+    <div class="sec">🔍 Concern × Status Cross-Tab</div>
+    <div class="gf">
+      <div class="card">
+        <div class="c-title">Main Concern vs Status Detail</div>
+        <div class="c-sub">Spot where cases are getting stuck — count (%) per row</div>
+        <div class="tw" id="tCross"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 8 -->
+    <div class="sec">📍 Location × Aging Breakdown</div>
+    <div class="gf">
+      <div class="card">
+        <div class="c-title">Site Location · Response Aging Profile</div>
+        <div class="c-sub">Per-site count across aging buckets — identify slow-response locations</div>
+        <div class="tw" id="tLocAg"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── DATA ──
+let RAW = [];
+let CHARTS = {};
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const PAL = ['#0f766e','#2563eb','#d97706','#7c3aed','#dc2626','#16a34a','#0891b2','#9333ea','#ea580c','#1d4ed8','#b45309','#0f766e'];
+const AGING_BUCKETS = ['Same Day','1 Day','2–3 Days','4+ Days'];
+const AGING_COLS = {'Same Day':'#16a34a','1 Day':'#0f766e','2–3 Days':'#d97706','4+ Days':'#dc2626','Unknown':'#94a3b8'};
+
+function getAgingBucket(v){
+  const n = parseFloat(v);
+  if(isNaN(n)) return 'Unknown';
+  if(n===0) return 'Same Day';
+  if(n===1) return '1 Day';
+  if(n<=3)  return '2–3 Days';
+  return '4+ Days';
+}
+
+// ── UPLOAD ──
+const zone = document.getElementById('uploadZone');
+const fi = document.getElementById('fileInput');
+zone.addEventListener('click', ()=> fi.click());
+zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', ()=> zone.classList.remove('drag'));
+zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('drag'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(f){
+  const r = new FileReader();
+  r.onload = ev => {
+    const wb = XLSX.read(ev.target.result, {type:'binary', cellDates:true});
+    RAW = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+    // Update upload UI
+    document.getElementById('uDefault').style.display='none';
+    document.getElementById('uDone').style.display='flex';
+    document.getElementById('uName').textContent = f.name;
+    document.getElementById('uInfo').textContent = RAW.length.toLocaleString()+' rows · '+new Date().toLocaleTimeString();
+    zone.classList.add('done');
+    document.getElementById('hCount').textContent = RAW.length.toLocaleString();
+    document.getElementById('hFile').textContent = f.name;
+    populateFilters();
+    render();
+    document.getElementById('dash').classList.add('on');
+  };
+  r.readAsBinaryString(f);
+}
+
+// ── FILTERS ──
+const FMAP = {
+  fYear:    r=> String(r['Year']||''),
+  fMonth:   r=> String(r['Month']||''),
+  fWeek:    r=> String(r['Weekly']||''),
+  fPlatform:r=> String(r['Platform v2']||r['Platform']||''),
+  fLocation:r=> String(r['Location']||''),
+  fConcern: r=> String(r['Main Concern']||''),
+  fStatus:  r=> String(r['Concern Status']||''),
+  fDetail:  r=> String(r['Status Detail']||''),
+  fAmb:     r=> String(r['Care Ambassador']||'').trim(),
+  fAge:     r=> String(r['Age Category']||''),
+};
+
+function populateFilters(){
+  for(const [id, fn] of Object.entries(FMAP)){
+    const sel = document.getElementById(id);
+    const vals = [...new Set(RAW.map(fn).filter(Boolean))].sort((a,b)=>{
+      if(id==='fMonth'||id==='fWeek') return (MONTHS.indexOf(a)||a).toString().localeCompare((MONTHS.indexOf(b)||b).toString());
+      return a.localeCompare(b);
+    });
+    sel.innerHTML = '<option value="">All</option>'+vals.map(v=>`<option>${v}</option>`).join('');
+    sel.onchange = render;
+  }
+}
+
+function getFiltered(){
+  const vals = {};
+  for(const id of Object.keys(FMAP)) vals[id] = document.getElementById(id).value;
+  return RAW.filter(r=> Object.entries(FMAP).every(([id,fn])=> !vals[id]||fn(r)===vals[id]));
+}
+
+function resetFilters(){
+  Object.keys(FMAP).forEach(id=>{ document.getElementById(id).value=''; });
+  render();
+}
+
+// ── CHART HELPERS ──
+function killChart(id){ if(CHARTS[id]){ CHARTS[id].destroy(); delete CHARTS[id]; } }
+
+const NUM_LABEL_PLUGIN = {
+  id:'numLbl',
+  afterDatasetsDraw(chart){
+    const {ctx} = chart;
+    const total = chart.data.datasets[0]?.data.reduce((s,v)=>s+(+v||0),0)||1;
+    ctx.save();
+    chart.data.datasets.forEach((ds,i)=>{
+      chart.getDatasetMeta(i).data.forEach((el,j)=>{
+        const val = ds.data[j];
+        if(!val) return;
+        const pct = ((val/total)*100).toFixed(1)+'%';
+        const label = `${val} (${pct})`;
+        ctx.font = '600 10px Outfit,sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        if(chart.config.type==='doughnut'||chart.config.type==='pie'){
+          const pos = el.tooltipPosition();
+          ctx.fillStyle='#fff';
+          ctx.font='bold 10px Outfit,sans-serif';
+          ctx.fillText(val, pos.x, pos.y-6);
+          ctx.font='9px Outfit,sans-serif';
+          ctx.fillText(pct, pos.x, pos.y+6);
+        } else if(chart.config.options.indexAxis==='y'){
+          ctx.fillStyle='#1e2a3a'; ctx.textAlign='left';
+          ctx.fillText(label, el.x+5, el.y);
+        } else {
+          ctx.fillStyle='#1e2a3a';
+          ctx.fillText(label, el.x, el.y-9);
+        }
+      });
+    });
+    ctx.restore();
+  }
+};
+
+const LINE_LABEL_PLUGIN = {
+  id:'lineLbl',
+  afterDatasetsDraw(chart){
+    const {ctx} = chart;
+    ctx.save();
+    chart.data.datasets.forEach((ds,i)=>{
+      chart.getDatasetMeta(i).data.forEach((pt,j)=>{
+        const val = ds.data[j];
+        if(!val) return;
+        ctx.fillStyle = ds.borderColor;
+        ctx.font='600 10px Outfit,sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText(val, pt.x, pt.y-5);
+      });
+    });
+    ctx.restore();
+  }
+};
+
+function makeBar(id, labels, values, colors, horiz){
+  killChart(id);
+  CHARTS[id] = new Chart(document.getElementById(id), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:values, backgroundColor:colors||PAL.map(c=>c+'cc'), borderRadius:6, borderSkipped:false }]},
+    options:{
+      indexAxis: horiz?'y':'x', responsive:true,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10,family:'Outfit'}} },
+        y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10,family:'Outfit'}} }
+      }, animation:{duration:400}
+    },
+    plugins:[NUM_LABEL_PLUGIN]
+  });
+}
+
+function makeDoughnut(id, labels, values){
+  killChart(id);
+  CHARTS[id] = new Chart(document.getElementById(id), {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data:values, backgroundColor:PAL.slice(0,labels.length).map(c=>c+'ee'), borderColor:'#fff', borderWidth:3, hoverOffset:6 }]},
+    options:{
+      responsive:true, cutout:'55%',
+      plugins:{ legend:{ position:'bottom', labels:{color:'#475569',font:{size:10,family:'Outfit'},padding:10,boxWidth:10} } },
+      animation:{duration:400}
+    },
+    plugins:[NUM_LABEL_PLUGIN]
+  });
+}
+
+function makeLine(id, labels, datasets){
+  killChart(id);
+  CHARTS[id] = new Chart(document.getElementById(id), {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{ labels:{color:'#475569',font:{size:10,family:'Outfit'},boxWidth:10} } },
+      scales:{
+        x:{grid:{color:'#f1f5f9'},ticks:{color:'#94a3b8',font:{size:10}}},
+        y:{grid:{color:'#f1f5f9'},ticks:{color:'#94a3b8',font:{size:10}}}
+      }, animation:{duration:400}
+    },
+    plugins:[LINE_LABEL_PLUGIN]
+  });
+}
+
+// ── HELPER: count ──
+function cntBy(data, key, top){
+  const m={};
+  data.forEach(r=>{ const v=String(r[key]||'Unknown').trim()||'Unknown'; m[v]=(m[v]||0)+1; });
+  let e=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  if(top) e=e.slice(0,top);
+  return e;
+}
+
+// ── MAIN RENDER ──
+function render(){
+  const D = getFiltered();
+  const total = D.length;
+  document.getElementById('fCount').textContent = total.toLocaleString();
+
+  // ── KPIs ──
+  const closed   = D.filter(r=>/closed/i.test(r['Concern Status']||'')).length;
+  const open     = D.filter(r=>/open/i.test(r['Concern Status']||'')).length;
+  const resolved = D.filter(r=>/resolved/i.test(r['Status Detail']||'')).length;
+  const pending  = D.filter(r=>/pending/i.test(r['Status Detail']||'')).length;
+  const inprog   = D.filter(r=>/in progress/i.test(r['Status Detail']||'')).length;
+  const agNums   = D.map(r=>parseFloat(r['Aging Response'])).filter(v=>!isNaN(v));
+  const sameDay  = agNums.filter(v=>v===0).length;
+  const within1  = agNums.filter(v=>v<=1).length;
+  const w1pct    = agNums.length?((within1/agNums.length)*100).toFixed(0):'0';
+
+  const kpis = [
+    {lbl:'Total Concerns',val:total.toLocaleString(),note:'Filtered records',color:'#0f766e'},
+    {lbl:'Closed',val:closed.toLocaleString(),note:total?((closed/total)*100).toFixed(1)+'% closure rate':'—',color:'#16a34a'},
+    {lbl:'Open',val:open.toLocaleString(),note:'Needs attention',color:'#d97706'},
+    {lbl:'Resolved',val:resolved.toLocaleString(),note:'Status = Resolved',color:'#2563eb'},
+    {lbl:'Responded ≤1 Day',val:w1pct+'%',note:within1.toLocaleString()+' records',color:'#0f766e'},
+    {lbl:'Same Day Response',val:sameDay.toLocaleString(),note:agNums.length?((sameDay/agNums.length)*100).toFixed(1)+'% of records':'—',color:'#7c3aed'},
+  ];
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k=>`
+    <div class="kpi">
+      <div class="kpi-bar" style="background:${k.color}"></div>
+      <div class="kpi-lbl">${k.lbl}</div>
+      <div class="kpi-val" style="color:${k.color}">${k.val}</div>
+      <div class="kpi-note">${k.note}</div>
+    </div>`).join('');
+
+  // ── Status Boxes ──
+  const sdMap = {};
+  D.forEach(r=>{ const s=r['Status Detail']||'Unknown'; sdMap[s]=(sdMap[s]||0)+1; });
+  const sdColors = {
+    'Resolved':        {bg:'#dcfce7',fg:'#16a34a'},
+    'In Progress':     {bg:'#dbeafe',fg:'#2563eb'},
+    'Pending Applicant Response':{bg:'#fef3c7',fg:'#d97706'},
+    'Transferred':     {bg:'#ede9fe',fg:'#7c3aed'},
+  };
+  document.getElementById('sbGrid').innerHTML = Object.entries(sdMap).map(([k,v])=>{
+    const c = sdColors[k]||{bg:'#f1f5f9',fg:'#64748b'};
+    const pct = total?((v/total)*100).toFixed(1):'0';
+    return `<div class="sb" style="background:${c.bg}">
+      <div class="sb-n" style="color:${c.fg}">${v.toLocaleString()}</div>
+      <div class="sb-l">${k}</div>
+      <div class="sb-p" style="color:${c.fg}">${pct}%</div>
+    </div>`;
+  }).join('');
+
+  // Status Detail doughnut
+  const sdE = Object.entries(sdMap);
+  makeDoughnut('cStatusDetail', sdE.map(e=>e[0]), sdE.map(e=>e[1]));
+
+  // ── Main Concern ──
+  const mc = cntBy(D,'Main Concern',10);
+  makeBar('cMainConcern', mc.map(e=>e[0].replace(/_/g,' ')), mc.map(e=>e[1]), PAL.slice(0,mc.length).map(c=>c+'cc'));
+
+  // ── L2 ──
+  const l2 = cntBy(D,'Main Concern L2',10);
+  makeBar('cL2', l2.map(e=>e[0]), l2.map(e=>e[1]), PAL.slice(0,l2.length).map(c=>c+'cc'), true);
+
+  // ── Monthly ──
+  const mhMap={}, mrMap={};
+  D.forEach(r=>{
+    const m=r['Month']; if(m){ mhMap[m]=(mhMap[m]||0)+1; }
+    const mr=r['Month Response']; if(mr){ mrMap[mr]=(mrMap[mr]||0)+1; }
+  });
+  const allM=[...new Set([...Object.keys(mhMap),...Object.keys(mrMap)])].sort((a,b)=>MONTHS.indexOf(a)-MONTHS.indexOf(b));
+  makeLine('cMonthly', allM, [
+    {label:'Harvest Month', data:allM.map(m=>mhMap[m]||0), borderColor:'#0f766e', backgroundColor:'#0f766e18', fill:true, tension:.4, pointRadius:5, pointBackgroundColor:'#0f766e'},
+    {label:'Response Month', data:allM.map(m=>mrMap[m]||0), borderColor:'#2563eb', backgroundColor:'#2563eb18', fill:true, tension:.4, pointRadius:5, pointBackgroundColor:'#2563eb'},
+  ]);
+
+  // ── Weekly ──
+  const wMap={};
+  D.forEach(r=>{ const w=r['Weekly']; if(w) wMap[w]=(wMap[w]||0)+1; });
+  const wKeys=Object.keys(wMap).sort();
+  makeLine('cWeekly', wKeys, [
+    {label:'Weekly Volume', data:wKeys.map(w=>wMap[w]), borderColor:'#7c3aed', backgroundColor:'#7c3aed18', fill:true, tension:.4, pointRadius:5, pointBackgroundColor:'#7c3aed'}
+  ]);
+
+  // ── Platform ──
+  const plat = cntBy(D,'Platform v2');
+  makeBar('cPlatform', plat.map(e=>e[0]), plat.map(e=>e[1]), PAL.slice(0,plat.length).map(c=>c+'cc'));
+
+  // ── Location ──
+  const locs = cntBy(D,'Location',12);
+  makeBar('cLocation', locs.map(e=>e[0]), locs.map(e=>e[1]), PAL.slice(0,locs.length).map(c=>c+'cc'), true);
+
+  // ── Aging Breakdown ──
+  const agBMap={};
+  D.forEach(r=>{ const b=getAgingBucket(r['Aging Response']); agBMap[b]=(agBMap[b]||0)+1; });
+  const agKeys=AGING_BUCKETS.filter(k=>agBMap[k]);
+  makeBar('cAging', agKeys, agKeys.map(k=>agBMap[k]), agKeys.map(k=>AGING_COLS[k]+'cc'));
+
+  // ── Age Category Boxes + Donut ──
+  const acMap={};
+  D.forEach(r=>{ const v=r['Age Category']||'Unknown'; acMap[v]=(acMap[v]||0)+1; });
+  const acCols={'0 to 3 Days':{bg:'#dcfce7',fg:'#16a34a'},'4 to 6 Days':{bg:'#fef3c7',fg:'#d97706'}};
+  document.getElementById('agBoxes').innerHTML = Object.entries(acMap).map(([k,v])=>{
+    const c=acCols[k]||{bg:'#f1f5f9',fg:'#64748b'};
+    const pct=total?((v/total)*100).toFixed(1):'0';
+    return `<div class="ag-box" style="background:${c.bg};border-color:transparent">
+      <div class="ag-n" style="color:${c.fg}">${v.toLocaleString()}</div>
+      <div class="ag-l">${k}</div>
+      <div class="ag-p" style="color:${c.fg}">${pct}% of total</div>
+    </div>`;
+  }).join('');
+  const acE=Object.entries(acMap);
+  makeDoughnut('cAgeCat', acE.map(e=>e[0]), acE.map(e=>e[1]));
+
+  // ── Ambassador Table ──
+  const ambMap={};
+  D.forEach(r=>{
+    const a=(r['Care Ambassador']||'Unknown').trim();
+    if(!ambMap[a]) ambMap[a]={total:0,closed:0,open:0,resolved:0,pending:0,inprog:0,ag:[]};
+    ambMap[a].total++;
+    if(/closed/i.test(r['Concern Status']||'')) ambMap[a].closed++;
+    else ambMap[a].open++;
+    if(/resolved/i.test(r['Status Detail']||'')) ambMap[a].resolved++;
+    if(/pending/i.test(r['Status Detail']||'')) ambMap[a].pending++;
+    if(/in progress/i.test(r['Status Detail']||'')) ambMap[a].inprog++;
+    const ag=parseFloat(r['Aging Response']);
+    if(!isNaN(ag)) ambMap[a].ag.push(ag);
+  });
+  let ambHtml=`<table><thead><tr><th>Ambassador</th><th>Total</th><th>Closed</th><th>Open</th><th>Resolved</th><th>Pending</th><th>In Progress</th><th>Closure %</th><th>Same Day</th><th>1 Day</th><th>2+ Days</th></tr></thead><tbody>`;
+  Object.entries(ambMap).sort((a,b)=>b[1].total-a[1].total).forEach(([name,d])=>{
+    const cp=d.total?((d.closed/d.total)*100).toFixed(1):0;
+    const cpc=cp>=80?'pg':cp>=50?'pa':'pr';
+    const sd=d.ag.filter(v=>v===0).length, od=d.ag.filter(v=>v===1).length, tp=d.ag.filter(v=>v>1).length;
+    const alen=d.ag.length||1;
+    ambHtml+=`<tr>
+      <td style="font-weight:600;color:#1e2a3a">${name}</td>
+      <td style="font-weight:700;color:#0f766e">${d.total}</td>
+      <td><span class="pill pg">${d.closed}</span></td>
+      <td><span class="pill pa">${d.open}</span></td>
+      <td style="color:#2563eb">${d.resolved}</td>
+      <td style="color:#d97706">${d.pending}</td>
+      <td style="color:#7c3aed">${d.inprog}</td>
+      <td><span class="pill ${cpc}">${cp}%</span></td>
+      <td style="color:#16a34a">${sd} <span style="color:#94a3b8;font-size:.68rem">(${((sd/alen)*100).toFixed(0)}%)</span></td>
+      <td style="color:#0f766e">${od} <span style="color:#94a3b8;font-size:.68rem">(${((od/alen)*100).toFixed(0)}%)</span></td>
+      <td style="color:#d97706">${tp} <span style="color:#94a3b8;font-size:.68rem">(${((tp/alen)*100).toFixed(0)}%)</span></td>
+    </tr>`;
+  });
+  ambHtml+='</tbody></table>';
+  document.getElementById('tAmb').innerHTML=ambHtml;
+
+  // ── Cross Tab ──
+  const allStatuses=[...new Set(D.map(r=>r['Status Detail']||'Unknown'))].sort();
+  const allConcerns=[...new Set(D.map(r=>r['Main Concern']||'Unknown'))].sort();
+  const xmap={};
+  D.forEach(r=>{
+    const c=r['Main Concern']||'Unknown', s=r['Status Detail']||'Unknown';
+    if(!xmap[c]) xmap[c]={};
+    xmap[c][s]=(xmap[c][s]||0)+1;
+  });
+  const sPill={'Resolved':'pg','In Progress':'pb','Pending Applicant Response':'pa','Transferred':'pp'};
+  let xHtml=`<table><thead><tr><th>Main Concern</th>`;
+  allStatuses.forEach(s=>{ xHtml+=`<th>${s}</th>`; });
+  xHtml+=`<th>Row Total</th></tr></thead><tbody>`;
+  allConcerns.forEach(c=>{
+    const rowT=allStatuses.reduce((s,st)=>(xmap[c]?.[st]||0)+s,0);
+    xHtml+=`<tr><td style="font-weight:600;color:#1e2a3a">${(c||'').replace(/_/g,' ')}</td>`;
+    allStatuses.forEach(s=>{
+      const v=xmap[c]?.[s]||0;
+      const pct=rowT?((v/rowT)*100).toFixed(0):0;
+      const pc=sPill[s]||'pgr';
+      xHtml+=`<td>${v?`<span class="pill ${pc}">${v}</span> <span style="color:#94a3b8;font-size:.68rem">${pct}%</span>`:'<span style="color:#cbd5e1">—</span>'}</td>`;
+    });
+    xHtml+=`<td style="font-weight:700;color:#0f766e">${rowT}</td></tr>`;
+  });
+  xHtml+='</tbody></table>';
+  document.getElementById('tCross').innerHTML=xHtml;
+
+  // ── Location × Aging ──
+  const allLocs=[...new Set(D.map(r=>r['Location']||'Unknown'))].sort();
+  const usedBuckets=AGING_BUCKETS.filter(b=>D.some(r=>getAgingBucket(r['Aging Response'])===b));
+  const laMap={};
+  D.forEach(r=>{
+    const l=r['Location']||'Unknown', b=getAgingBucket(r['Aging Response']);
+    if(!laMap[l]) laMap[l]={};
+    laMap[l][b]=(laMap[l][b]||0)+1;
+  });
+  let laHtml=`<table><thead><tr><th>Location</th>`;
+  usedBuckets.forEach(b=>{ laHtml+=`<th style="color:${AGING_COLS[b]}">${b}</th>`; });
+  laHtml+=`<th>Total</th></tr></thead><tbody>`;
+  allLocs.forEach(l=>{
+    const rowT=usedBuckets.reduce((s,b)=>(laMap[l]?.[b]||0)+s,0);
+    laHtml+=`<tr><td style="font-weight:600;color:#1e2a3a">${l}</td>`;
+    usedBuckets.forEach(b=>{
+      const v=laMap[l]?.[b]||0;
+      const pct=rowT?((v/rowT)*100).toFixed(0):0;
+      laHtml+=`<td>${v?`<span style="color:${AGING_COLS[b]};font-weight:600">${v}</span> <span style="color:#94a3b8;font-size:.68rem">(${pct}%)</span>`:'<span style="color:#cbd5e1">—</span>'}</td>`;
+    });
+    laHtml+=`<td style="font-weight:700;color:#0f766e">${rowT}</td></tr>`;
+  });
+  laHtml+='</tbody></table>';
+  document.getElementById('tLocAg').innerHTML=laHtml;
+}
+</script>
+</body>
+</html>
