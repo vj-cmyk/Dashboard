@@ -64,6 +64,7 @@ select:focus{border-color:var(--blue);}
 .rbtn:hover{background:var(--surface2);}
 .xbtn{font-size:11px;padding:5px 12px;border-radius:var(--r-md);border:.5px solid var(--teal);background:var(--teal-l);color:var(--teal-d);cursor:pointer;font-family:inherit;font-weight:500;}
 .xbtn:hover{background:var(--teal);color:white;}
+.xbtn:disabled{opacity:0.6;cursor:not-allowed;}
 #finfo{font-size:11px;color:var(--text3);margin-left:auto;}
 
 /* KPI GRID — 7 cards */
@@ -1007,7 +1008,6 @@ function exportPDF(){
   setTimeout(async () => {
     try {
       const element = document.querySelector('.shell');
-      const today = new Date().toLocaleDateString('en-US', {year: 'numeric', month: 'long', day: 'numeric'});
       const month = document.getElementById('fMonth').value;
       const site = document.getElementById('fSite').value;
       const fname = `Survey_Dashboard_${month}_${site}_${new Date().getTime()}.pdf`;
@@ -1020,7 +1020,10 @@ function exportPDF(){
         jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
       };
 
-      await html2pdf().set(opt).from(element).save();
+      html2pdf()
+        .set(opt)
+        .from(element)
+        .save();
 
       btn.textContent = '✓ PDF Exported';
       setTimeout(() => {
