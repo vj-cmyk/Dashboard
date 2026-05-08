@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
 :root{
   --bg:#f5f4f0;--surface:#fff;--surface2:#f0ede8;
@@ -41,7 +42,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--teal);display:inline-block;}
 
 /* UPLOAD */
-.upl-wrap{border:1.5px dashed var(--border2);border-radius:var(--r-lg);padding:14px 20px;display:flex;align-items:center;gap:14px;margin-bottom:16px;background:var(--surface);cursor:pointer;transition:border-color .2s,background .2s;position:relative;}
+.upl-wrap{border:1.5px dashed var(--border2);border-radius:var(--r-lg);padding:14px 20px;display:flex;align-items:center;gap:14px;margin-bottom:16px;background:var(--surface);cursor:pointer;transition:all .2s;}
 .upl-wrap:hover,.upl-wrap.drag{border-color:var(--blue);background:var(--blue-l);}
 .upl-ico{width:38px;height:38px;border-radius:var(--r-md);background:var(--blue-l);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .upl-ico svg{width:18px;height:18px;}
@@ -61,6 +62,8 @@ select:focus{border-color:var(--blue);}
 .fsep{width:.5px;height:18px;background:var(--border);margin:0 4px;}
 .rbtn{font-size:11px;padding:5px 12px;border-radius:var(--r-md);border:.5px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;}
 .rbtn:hover{background:var(--surface2);}
+.xbtn{font-size:11px;padding:5px 12px;border-radius:var(--r-md);border:.5px solid var(--teal);background:var(--teal-l);color:var(--teal-d);cursor:pointer;font-family:inherit;font-weight:500;}
+.xbtn:hover{background:var(--teal);color:white;}
 #finfo{font-size:11px;color:var(--text3);margin-left:auto;}
 
 /* KPI GRID — 7 cards */
@@ -108,7 +111,7 @@ select:focus{border-color:var(--blue);}
 /* SITE SELECTOR (radar) */
 .ssel{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;align-items:center;}
 .ssel-lbl{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
-.sbtn{font-size:11px;padding:3px 10px;border-radius:20px;border:.5px solid var(--border2);cursor:pointer;background:transparent;color:var(--text2);font-family:inherit;font-weight:500;transition:all .15s;}
+.sbtn{font-size:11px;padding:3px 10px;border-radius:20px;border:.5px solid var(--border2);cursor:pointer;background:transparent;color:var(--text2);font-family:inherit;font-weight:500;transition:all .1s;}
 
 /* HEATMAP */
 .hw{overflow-x:auto;}
@@ -132,6 +135,14 @@ tbody tr{border-bottom:2px solid var(--bg);}
 .foot{margin-top:28px;padding-top:14px;border-top:.5px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .foot p{font-size:11px;color:var(--text3);}
 .cw{position:relative;width:100%;}
+
+/* PDF-specific styling */
+@media print {
+  body{background:white;color:#000;}
+  .upl-wrap,.fbar,.foot{display:none;}
+  .shell{padding:0;}
+  .card{page-break-inside:avoid;border:1px solid #ddd;}
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.1.2/wordcloud2.min.js"></script>
 </head>
@@ -173,6 +184,7 @@ tbody tr{border-bottom:2px solid var(--bg);}
   
   <div class="fsep"></div>
   <button class="rbtn" onclick="resetFilters()">↺ Reset</button>
+  <button class="xbtn" onclick="exportPDF()" id="exportBtn" style="display:none;margin-left:auto;">📥 Export PDF</button>
   <span id="finfo" style="font-size:11px;color:var(--text3);margin-left:auto;"></span>
 </div>
 
@@ -343,11 +355,6 @@ function populateFilters(){
   });
 }
 
-
-
-
-
-
 function applyFilters(){
   const month=document.getElementById('fMonth').value;
   const site=document.getElementById('fSite').value;
@@ -385,11 +392,6 @@ function applyFilters(){
 
   document.getElementById('finfo').textContent=`${mn} · ${sn}`;
 }
-
-
-
-
-
 
 function resetFilters(){
   ['fMonth','fSite'].forEach(id=>document.getElementById(id).value='all');
@@ -511,7 +513,6 @@ function buildRatingChart(d){
 
 /* ═══════════════ MONTHLY VOLUME BY SITE ════════════════════════ */
 
-
 function buildVolChart(d){
   const activeSites=Object.keys(d.sites);
   const total = d.total;
@@ -546,7 +547,7 @@ function buildVolChart(d){
   charts.vol=new Chart(document.getElementById('volChart'),{
     type:'bar',
     data:{
-      labels:activeSites, // ONLY SITE NAMES
+      labels:activeSites,
       datasets:[{
         data:vals,
         backgroundColor:activeSites.map(s=>siteColor(s)),
@@ -578,8 +579,6 @@ function buildVolChart(d){
   });
 }
 
-
-
 /* ═══════════════ SEGMENTATION CHART ════════════════════════════ */
 function buildSegChart(d){
   const activeSites=Object.keys(d.sites);
@@ -588,7 +587,6 @@ function buildSegChart(d){
   const paPct=sorted.map(s=>+(d.sites[s].Pa/d.sites[s].n*100).toFixed(1));
   const dPct=sorted.map(s=>+(d.sites[s].D/d.sites[s].n*100).toFixed(1));
 
-  // plugin: draw % label inside each stack segment
   const lblPlugin={
     id:'segLbl',
     afterDatasetsDraw(chart){
@@ -648,7 +646,6 @@ function renderSiteRanked(d,metric){
 function buildSiteSelector(){
   const wrap=document.getElementById('siteSel');
   const activeSites=Object.keys(curD.sites);
-  // prune selSites to only include active
   selSites=new Set([...selSites].filter(s=>activeSites.includes(s)));
   if(selSites.size===0)activeSites.forEach(s=>selSites.add(s));
   wrap.innerHTML='<span class="ssel-lbl">Sites:</span>'+
@@ -717,43 +714,40 @@ function renderInsights(d){
   const label=curKey==='all'?'All months':curKey;
   document.getElementById('insightCtx').textContent=`— ${label}`;
 
-  // find declining site if all months
   let trendNote='';
   if(curKey==='all'&&MONTHS.length>=2){
-    // check NCR or worst site across months
     const tracked='NCR';
     if(DB['January']&&DB[MONTHS[MONTHS.length-2]]&&DB[MONTHS[MONTHS.length-2]].sites[tracked]&&DB['January'].sites[tracked]){
       const first=DB['January'].sites[tracked].nps;
       const last=DB[MONTHS[MONTHS.length-2]].sites[tracked].nps;
       const diff=(last-first).toFixed(1);
-      if(diff<0)trendNote=`<div class="ibox w"><strong>${tracked} NPS declined ${Math.abs(diff)} pts since January</strong> — From +${first} in Jan to +${last} in ${MONTHS[MONTHS.length-2]}. A consistent downward trend requiring leadership attention.</div>`;
+      if(diff<0)trendNote=`<div class="ibox w"><strong>${tracked} NPS declined ${Math.abs(diff)} pts since January</strong> — From +${first} in Jan to +${last} in ${MONTHS[MONTHS.length-2]}. Consider audit of recruiter processes.</div>`;
     }
   }
 
   const key=`
-    <div class="ibox"><strong>${best} leads all sites with NPS +${d.sites[best].nps}</strong> — Also top-ranked on communication (${d.sites[best].comm}/10) and friendliness (${d.sites[best].friend}/10). Use as the benchmark playbook for other sites.</div>
-    <div class="ibox"><strong>Overall NPS of +${nps} — ${nps>=60?'Well above':'Near'} industry benchmark (~30)</strong> — ${pPct}% of respondents are Promoters (${d.P.toLocaleString()} of ${d.total.toLocaleString()}). Timely response rate: ${tPct}% · Rep knowledge: ${kPct}%.</div>
+    <div class="ibox"><strong>${best} leads all sites with NPS +${d.sites[best].nps}</strong> — Also top-ranked on communication (${d.sites[best].comm}/10) and friendliness (${d.sites[best].friend}/10).</div>
+    <div class="ibox"><strong>Overall NPS of +${nps} — ${nps>=60?'Well above':'Near'} industry benchmark (~30)</strong> — ${pPct}% of respondents are Promoters (${d.P.toLocaleString()} of ${d.total.toLocaleString()}).</div>
     ${trendNote}
-    <div class="ibox w"><strong>${worst} is the lowest performer — NPS +${d.sites[worst].nps}</strong> — Timely response: ${d.sites[worst].timely}%, Knowledge: ${d.sites[worst].know}%, Communication: ${d.sites[worst].comm}/10. ${d.sites[worst].D} detractors recorded${curKey!=='all'?' this month':''} require follow-up.</div>
+    <div class="ibox w"><strong>${worst} is the lowest performer — NPS +${d.sites[worst].nps}</strong> — Timely response: ${d.sites[worst].timely}%, Knowledge: ${d.sites[worst].know}%, Communication: ${d.sites[worst].comm}/10.</div>
   `;
   const act=`
     <div class="ibox"><strong>Audit ${worst} recruiter processes</strong> — Pull open-text detractor responses. Map pain points to: pre-requirements, scheduling, communication lag, and onboarding scripts.</div>
     <div class="ibox"><strong>Use ${best} as the benchmark playbook</strong> — Document their recruiter SLA on response time, FAQ materials, and onboarding scripts. Cascade to mid-tier sites first.</div>
-    <div class="ibox"><strong>Knowledge gap: focus on sites below 96%</strong> — ${activeSites.filter(s=>d.sites[s].know<96).join(', ')||'None — all sites above threshold'}. A one-page policy FAQ can close this within one quarter.</div>
-    <div class="ibox"><strong>Add month-over-month NPS tracking to QBRs</strong> — Site-level NPS trend is the leading indicator of recruiter process health. Make it a standing agenda item for all site director reviews.</div>
+    <div class="ibox"><strong>Knowledge gap: focus on sites below 96%</strong> — ${activeSites.filter(s=>d.sites[s].know<96).join(', ')||'None — all sites above threshold'}. A one-page policy FAQ might close the gap.</div>
+    <div class="ibox"><strong>Add month-over-month NPS tracking to QBRs</strong> — Site-level NPS trend is the leading indicator of recruiter process health. Make it a standing agenda item for all site directors.</div>
   `;
   const pit=`
-    <div class="ibox w"><strong>Low-n sites produce unreliable metrics</strong> — ${activeSites.filter(s=>d.sites[s].n<30).map(s=>`${s} (n=${d.sites[s].n})`).join(', ')||'All sites above 30 responses'}. Avoid major decisions from small sample sizes.</div>
-    <div class="ibox w"><strong>Binary Yes/No questions mask depth</strong> — ${(100-tPct).toFixed(1)}% said No to timely response. Cross-tab with site and month to surface the root cause before acting.</div>
-    <div class="ibox w"><strong>Ceiling effect on 1–10 rating scales</strong> — High concentration of 10/10 scores compresses variation between sites. Consider a 1–5 Likert scale in future survey rounds for better discrimination.</div>
-    ${curKey==='May'||d.total<50?'<div class="ibox w"><strong>Low response count — interpret with caution</strong> — Only '+d.total+' responses in this period. Exclude from trend comparisons and label as incomplete in executive presentations.</div>':''}
+    <div class="ibox w"><strong>Low-n sites produce unreliable metrics</strong> — ${activeSites.filter(s=>d.sites[s].n<30).map(s=>`${s} (n=${d.sites[s].n})`).join(', ')||'All sites above 30 responses. Sample size is adequate.'}</div>
+    <div class="ibox w"><strong>Binary Yes/No questions mask depth</strong> — ${(100-tPct).toFixed(1)}% said No to timely response. Cross-tab with site and month to surface the root cause before action.</div>
+    <div class="ibox w"><strong>Ceiling effect on 1–10 rating scales</strong> — High concentration of 10/10 scores compresses variation between sites. Consider a 1–5 Likert scale in future surveys.</div>
+    ${curKey==='May'||d.total<50?'<div class="ibox w"><strong>Low response count — interpret with caution</strong> — Only '+d.total+' responses in this period. Exclude from trend comparisons and limit confidence in sub-site analysis.</div>':''}
   `;
 
   document.getElementById('ins-key').innerHTML=key;
   document.getElementById('ins-act').innerHTML=act;
   document.getElementById('ins-pit').innerHTML=pit;
 
-  // re-hide non-active tab
   ['key','act','pit'].forEach(t=>{const e=document.getElementById('ins-'+t);if(e)e.style.display=t===curTab?'':'none';});
 }
 
@@ -803,7 +797,6 @@ function ingestRows(rows,fname){
   const cDate=findCol(s0,['timestamp','date','time']);
   if(!cR){setStat('Cannot find NPS/recommend column. Check file format.','err');return;}
 
-  // clear DB (keep structure)
   Object.keys(DB).forEach(k=>{if(k!=='all')delete DB[k];});
 
   const global={total:0,P:0,Pa:0,D:0,tY:0,kY:0,cS:0,cN:0,fS:0,fN:0,rS:0,rN:0,nd:{}};
@@ -823,10 +816,9 @@ function ingestRows(rows,fname){
     let month='Unknown';
     if(cDate){
       const raw=r[cDate];
-      // try parse as excel serial or date string
       let dt=null;
       const num=parseFloat(raw);
-      if(!isNaN(num)&&num>40000){// excel serial
+      if(!isNaN(num)&&num>40000){
         dt=new Date(Math.round((num-25569)*86400*1000));
       }else{
         dt=new Date(raw);
@@ -896,7 +888,6 @@ function ingestRows(rows,fname){
 
   DB['all']=toDBEntry(global,buildSites(siteMap));
 
-  // sort months by calendar order
   const sortedMonths=Object.keys(byMonth).sort((a,b)=>{
     const ai=MONTH_ORDER.indexOf(a),bi=MONTH_ORDER.indexOf(b);
     return(ai===-1?99:ai)-(bi===-1?99:bi);
@@ -906,25 +897,23 @@ function ingestRows(rows,fname){
     DB[m]=toDBEntry(bm,buildSites(bm.sites));
   });
 
-  // update globals
   MONTHS=sortedMonths;
   SITES=Object.keys(DB['all'].sites);
   selSites=new Set(SITES);
   curKey='all';curD=DB['all'];
 
-  // rebuild site color map
   let ci=0;
   SITES.forEach(s=>{if(!SC[s]){SC[s]=EXTRA[ci%EXTRA.length];ci++;}});
 
   document.getElementById('hdBadge').textContent=`${global.total.toLocaleString()} responses · ${SITES.length} sites · ${fname}`;
+  document.getElementById('exportBtn').style.display='inline-block';
   populateFilters();
   document.getElementById('finfo').textContent=`All months · All sites · n=${global.total.toLocaleString()}`;
   buildSiteSelector();
   render(DB['all']);
-renderWordCloud();
+  renderWordCloud();
   setStat(`✓ Dashboard refreshed from "${fname}" — ${global.total.toLocaleString()} responses · ${SITES.length} sites · ${MONTHS.length} months auto-detected.`,'ok');
 }
-
 
 let wcData = {like:[],least:[],apply:[],look:[]};
 let wcStore = {};
@@ -936,8 +925,6 @@ function setWC(type,el){
   el.classList.add('on');
   renderWordCloud();
 }
-
-
 
 function renderWordCloud(){
   let words = [];
@@ -979,7 +966,6 @@ function renderWordCloud(){
 
   words.forEach(w=>{
     if(!w) return;
-
     const str = String(w).toLowerCase().replace(/[^a-z ]/g,'');
     str.split(' ').forEach(c=>{
       if(c.length > 3 && !stopwords.has(c)){
@@ -999,57 +985,58 @@ function renderWordCloud(){
     Math.sqrt(size/max)*50
   ]);
 
-  WordCloud(document.getElementById('wordcloud'),{
-    list:list,
-    gridSize:10,
-    weightFactor:1,
-    color:()=>['#378ADD','#1D9E75','#D85A30','#EF9F27'][Math.floor(Math.random()*4)],
-    backgroundColor:'transparent'
+  WordCloud(document.getElementById('wordcloud'), {
+    list: list,
+    gridSize: 16,
+    weightFactor: 3,
+    color: (word, weight) => {
+      const colors = ['#1D9E75','#378ADD','#D85A30','#BA7517','#7F77DD'];
+      return colors[Math.floor(Math.random() * colors.length)];
+    },
+    rotateRatio: 0.5,
+    backgroundColor: 'transparent'
   });
 }
 
+/* ═══════════════ PDF EXPORT ════════════════════════════════════ */
+function exportPDF(){
+  const btn = document.getElementById('exportBtn');
+  btn.textContent = '⏳ Generating…';
+  btn.disabled = true;
 
+  setTimeout(async () => {
+    try {
+      const element = document.querySelector('.shell');
+      const today = new Date().toLocaleDateString('en-US', {year: 'numeric', month: 'long', day: 'numeric'});
+      const month = document.getElementById('fMonth').value;
+      const site = document.getElementById('fSite').value;
+      const fname = `Survey_Dashboard_${month}_${site}_${new Date().getTime()}.pdf`;
 
-/* ═══════════════ INIT ═══════════════════════════════════════════ */
-document.getElementById('ftDate').textContent='Generated '+new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: fname,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, logging: false, useCORS: true },
+        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+      };
 
-// Show empty placeholder state — no data loaded yet
-(function showEmptyState(){
-  // KPIs: dashes
-  document.querySelectorAll('.kpi-val').forEach(e=>e.textContent='—');
-  document.querySelectorAll('.kpi-sub').forEach(e=>{if(e.id)e.textContent='—';});
+      await html2pdf().set(opt).from(element).save();
 
-  // finfo
-  document.getElementById('finfo').textContent='No data loaded — upload a file to begin';
-
-  // NPS mega bar: empty grey
-  document.getElementById('npsMega').innerHTML=
-    '<div style="width:100%;height:100%;background:var(--surface2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3);">Upload data to see distribution</div>';
-
-  // Site ranked: placeholder
-  document.getElementById('siteRanked').innerHTML=
-    '<div style="font-size:12px;color:var(--text3);padding:12px 0;">Upload a survey file to populate site rankings.</div>';
-
-  // Heatmap: placeholder
-  document.getElementById('heatTable').innerHTML=
-    '<tr><td style="font-size:12px;color:var(--text3);padding:12px 0;">Upload a survey file to see the performance heatmap.</td></tr>';
-
-  // Site selector: placeholder
-  document.getElementById('siteSel').innerHTML=
-    '<span class="ssel-lbl" style="color:var(--text3);">Sites will appear after upload</span>';
-
-  // Insights: placeholder
-  document.getElementById('ins-key').innerHTML=
-    '<div class="ibox" style="border-color:var(--text3);">Upload a survey file to generate insights automatically.</div>';
-
-  // Word cloud: placeholder
-  document.getElementById('wordcloud').innerHTML=
-    '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px;">Upload file with text responses to generate word cloud</div>';
-
-  // Filter bar: disabled selects
-  document.getElementById('fMonth').innerHTML='<option value="all">All months</option>';
-  document.getElementById('fSite').innerHTML='<option value="all">All sites</option>';
-})();
+      btn.textContent = '✓ PDF Exported';
+      setTimeout(() => {
+        btn.textContent = '📥 Export PDF';
+        btn.disabled = false;
+      }, 2000);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      btn.textContent = '❌ Export Failed';
+      setTimeout(() => {
+        btn.textContent = '📥 Export PDF';
+        btn.disabled = false;
+      }, 2000);
+    }
+  }, 100);
+}
 </script>
 </body>
 </html>
