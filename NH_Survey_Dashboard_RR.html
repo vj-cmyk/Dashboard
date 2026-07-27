@@ -154,6 +154,39 @@ body {
   cursor: pointer; outline: none; transition: border-color 0.2s; min-width: 120px;
 }
 .filter-select:focus { border-color: var(--accent); }
+.ms-dropdown { position: relative; }
+.ms-btn {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 7px;
+  padding: 6px 10px; font-size: 12px; font-weight: 500;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer; outline: none; transition: border-color 0.2s; min-width: 120px;
+  text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.ms-btn::after { content: '▾'; font-size: 10px; color: var(--text-muted); }
+.ms-btn:focus, .ms-btn.open { border-color: var(--accent); }
+.ms-panel {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  background: var(--white); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15,23,42,0.12); padding: 6px; min-width: 170px;
+  max-height: 260px; overflow-y: auto;
+}
+.ms-panel.open { display: block; }
+.ms-opt {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; color: var(--text); cursor: pointer; user-select: none;
+}
+.ms-opt:hover { background: var(--bg); }
+.ms-opt input { cursor: pointer; accent-color: var(--accent); }
+.ms-panel-ftr {
+  display: flex; justify-content: space-between; gap: 6px; padding: 6px 8px 2px;
+  margin-top: 4px; border-top: 1px solid var(--border);
+}
+.ms-panel-ftr button {
+  background: none; border: none; color: var(--accent); font-size: 11px; font-weight: 700;
+  cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; padding: 2px 4px;
+}
+.ms-panel-ftr button:hover { text-decoration: underline; }
 .filter-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 .reset-btn {
   padding: 6px 14px; background: white; color: var(--text-muted);
@@ -401,7 +434,10 @@ body {
       </div>
       <div class="filter-group">
         <span class="filter-label">Month</span>
-        <select class="filter-select" id="fMonth" onchange="applyFilters()"><option value="">All Months</option></select>
+        <div class="ms-dropdown" id="fMonthWrap">
+          <button type="button" class="ms-btn" id="fMonthBtn" onclick="toggleMonthDropdown()">All Months</button>
+          <div class="ms-panel" id="fMonthPanel"></div>
+        </div>
       </div>
       <div class="filter-group">
         <span class="filter-label">Site</span>
@@ -738,14 +774,67 @@ function normalizeData(rows) {
 }
 
 // ── FILTERS ───────────────────────────────────────────────────────────────────
+let MONTH_SELECTED = []; // empty = All Months
 function populateFilters() {
   const years      = [...new Set(allData.map(r=>r.year))].filter(v=>v).sort();
   const sites      = [...new Set(allData.map(r=>r.site))].filter(v=>v).sort();
   const milestones = MILESTONE_ORDER.filter(m => allData.some(r=>r.milestone===m));
   sel('fYear',      years.map(v=>({v,l:v})));
-  sel('fMonth',     MONTHS_ORDER.filter(m=>allData.some(r=>r.month===m)).map(v=>({v,l:v})));
+  populateMonthPanel();
   sel('fSite',      sites.map(v=>({v,l:v})));
   sel('fMilestone', milestones.map(v=>({v,l:MILESTONE_LABELS[MILESTONE_ORDER.indexOf(v)]||v})));
+}
+function populateMonthPanel() {
+  const months = MONTHS_ORDER.filter(m=>allData.some(r=>r.month===m));
+  MONTH_SELECTED = MONTH_SELECTED.filter(m=>months.includes(m)); // drop stale selections
+  const panel = document.getElementById('fMonthPanel');
+  panel.innerHTML =
+    months.map(m=>`
+      <label class="ms-opt">
+        <input type="checkbox" value="${m}" ${MONTH_SELECTED.includes(m)?'checked':''} onchange="toggleMonthOpt('${m}',this.checked)">
+        ${m}
+      </label>`).join('') +
+    `<div class="ms-panel-ftr">
+       <button type="button" onclick="selectAllMonths(${JSON.stringify(months)})">Select all</button>
+       <button type="button" onclick="clearAllMonths()">Clear</button>
+     </div>`;
+  updateMonthBtnLabel();
+}
+function toggleMonthDropdown() {
+  const panel = document.getElementById('fMonthPanel');
+  const btn = document.getElementById('fMonthBtn');
+  const willOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', willOpen);
+  btn.classList.toggle('open', willOpen);
+}
+document.addEventListener('click', function(e){
+  const wrap = document.getElementById('fMonthWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('fMonthPanel').classList.remove('open');
+    document.getElementById('fMonthBtn').classList.remove('open');
+  }
+});
+function toggleMonthOpt(month, checked) {
+  if (checked) { if(!MONTH_SELECTED.includes(month)) MONTH_SELECTED.push(month); }
+  else { MONTH_SELECTED = MONTH_SELECTED.filter(m=>m!==month); }
+  updateMonthBtnLabel();
+  applyFilters();
+}
+function selectAllMonths(months) {
+  MONTH_SELECTED = [...months];
+  populateMonthPanel();
+  applyFilters();
+}
+function clearAllMonths() {
+  MONTH_SELECTED = [];
+  populateMonthPanel();
+  applyFilters();
+}
+function updateMonthBtnLabel() {
+  const btn = document.getElementById('fMonthBtn');
+  if (!MONTH_SELECTED.length) btn.textContent = 'All Months';
+  else if (MONTH_SELECTED.length === 1) btn.textContent = MONTH_SELECTED[0];
+  else btn.textContent = MONTH_SELECTED.length + ' Months Selected';
 }
 function sel(id, opts) {
   const el = document.getElementById(id);
@@ -755,11 +844,10 @@ function sel(id, opts) {
 }
 function applyFilters() {
   const fy  = document.getElementById('fYear').value;
-  const fm  = document.getElementById('fMonth').value;
   const fs  = document.getElementById('fSite').value;
   const fms = document.getElementById('fMilestone').value;
   filteredData = allData.filter(r =>
-    (!fy  || r.year==fy) && (!fm || r.month===fm) && (!fs || r.site===fs) && (!fms || r.milestone===fms)
+    (!fy  || r.year==fy) && (!MONTH_SELECTED.length || MONTH_SELECTED.includes(r.month)) && (!fs || r.site===fs) && (!fms || r.milestone===fms)
   );
   const invited   = filteredData.length;
   const responded = filteredData.filter(isRespondent).length;
@@ -768,7 +856,9 @@ function applyFilters() {
   renderAll();
 }
 function resetFilters() {
-  ['fYear','fMonth','fSite','fMilestone'].forEach(id => document.getElementById(id).value='');
+  ['fYear','fSite','fMilestone'].forEach(id => document.getElementById(id).value='');
+  MONTH_SELECTED = [];
+  populateMonthPanel();
   applyFilters();
 }
 
@@ -821,14 +911,12 @@ function renderJourney() {
   const invited   = MILESTONE_ORDER.map(m => filteredData.filter(r=>r.milestone===m).length);
   const responded = MILESTONE_ORDER.map(m => filteredData.filter(r=>r.milestone===m && isRespondent(r)).length);
   container.innerHTML = MILESTONE_ORDER.map((m,i) => {
-    const drop = i>0 && invited[i-1]>0 ? Math.round((invited[i-1]-invited[i])/invited[i-1]*100) : null;
     const rrMs = pct(responded[i], invited[i]);
     return `<div class="journey-step">
       <div class="step-dot s${i+1}">${i+1}</div>
       <div class="step-name">${MILESTONE_LABELS[i]}</div>
       <div class="step-count">${responded[i].toLocaleString()} responded</div>
       <div class="step-rr">📬 ${rrMs}% RR (${invited[i]} invited)</div>
-      ${drop!==null?`<div class="step-drop">▼ ${drop}% drop</div>`:''}
     </div>`;
   }).join('');
 }
