@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NH Survey Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f0f4f8;
+  --white: #ffffff;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --border2: #cbd5e1;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-light: #94a3b8;
+
+  --happy: #16a34a;
+  --happy-light: #dcfce7;
+  --fine: #ca8a04;
+  --fine-light: #fef9c3;
+  --sad: #dc2626;
+  --sad-light: #fee2e2;
+  --angry: #7c3aed;
+  --angry-light: #ede9fe;
+
+  --promoter: #0ea5e9;
+  --promoter-light: #e0f2fe;
+  --passive: #f59e0b;
+  --passive-light: #fef3c7;
+  --detractor: #ef4444;
+  --detractor-light: #fee2e2;
+
+  --accent: #6366f1;
+  --accent-light: #eef2ff;
+
+  --response-rate: #0891b2;
+  --response-rate-light: #e0f7fa;
+
+  --milestone1: #6366f1;
+  --milestone2: #0ea5e9;
+  --milestone3: #10b981;
+  --milestone4: #f59e0b;
+
+  --fd-indigo: #4b4bf9;
+  --fd-midnight: #09092d;
+  --fd-lemon: #f9ef77;
+  --fd-coral: #ff8d96;
+  --fd-lavender: #bfa1ff;
+  --fd-mint: #8bf0bb;
+
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.1);
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.header {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+.header-brand { display: flex; align-items: center; gap: 12px; }
+.brand-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-size: 16px;
+}
+.brand-text h1 { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.brand-text p  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.header-right  { display: flex; align-items: center; gap: 10px; }
+.file-badge {
+  font-size: 11px; font-weight: 600;
+  padding: 4px 10px; border-radius: 20px;
+  background: var(--accent-light); color: var(--accent);
+  border: 1px solid #c7d2fe; transition: all 0.2s;
+}
+.file-badge.loaded { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
+.upload-btn {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--accent); color: white;
+  border: none; border-radius: var(--radius-sm);
+  padding: 9px 16px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.2s; box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+}
+.upload-btn:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,0.4); }
+.upload-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+#fileInput { display: none; }
+
+.main { padding: 20px 24px 40px; max-width: 1440px; margin: 0 auto; }
+
+.upload-zone {
+  background: var(--white);
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 56px 24px;
+  text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 20px;
+}
+.upload-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+.upload-zone.hidden { display: none; }
+.upload-zone .uz-icon { font-size: 40px; margin-bottom: 12px; }
+.upload-zone h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.upload-zone p  { font-size: 13px; color: var(--text-muted); }
+.uz-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 16px; padding: 10px 20px;
+  background: var(--accent); color: white; border: none;
+  border-radius: var(--radius-sm); font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.dashboard { display: none; }
+.dashboard.visible { display: block; }
+
+.filter-bar {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 18px; box-shadow: var(--shadow);
+}
+.filter-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); white-space: nowrap; }
+.filter-group { display: flex; align-items: center; gap: 6px; }
+.filter-select {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 7px;
+  padding: 6px 10px; font-size: 12px; font-weight: 500;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer; outline: none; transition: border-color 0.2s; min-width: 120px;
+}
+.filter-select:focus { border-color: var(--accent); }
+.filter-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+.reset-btn {
+  padding: 6px 14px; background: white; color: var(--text-muted);
+  border: 1px solid var(--border2); border-radius: 7px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.2s;
+  display: flex; align-items: center; gap: 5px;
+}
+.reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+.filter-count { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.kpi-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.kpi-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:3px; }
+.kpi-card.kpi-total::after     { background: var(--accent); }
+.kpi-card.kpi-invited::after   { background: var(--response-rate); }
+.kpi-card.kpi-rr::after        { background: var(--response-rate); }
+.kpi-card.kpi-happy::after     { background: var(--happy); }
+.kpi-card.kpi-nps::after       { background: var(--promoter); }
+.kpi-card.kpi-promoter::after  { background: var(--promoter); }
+.kpi-card.kpi-passive::after   { background: var(--passive); }
+.kpi-card.kpi-detractor::after { background: var(--detractor); }
+.kpi-emoji { font-size: 22px; margin-bottom: 8px; }
+.kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.kpi-value { font-size: 30px; font-weight: 800; font-family: 'Syne', sans-serif; margin: 3px 0 2px; color: var(--text); }
+.kpi-sub   { font-size: 11px; color: var(--text-light); }
+.rr-ring-wrap  { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.rr-ring-track { flex: 1; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.rr-ring-fill  { height: 100%; border-radius: 3px; background: var(--response-rate); transition: width 0.6s ease; }
+.rr-ring-label { font-size: 10px; font-weight: 700; color: var(--response-rate); white-space: nowrap; }
+
+.journey-bar {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px; margin-bottom: 18px; box-shadow: var(--shadow);
+}
+.journey-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 14px; }
+.journey-steps { display: flex; align-items: center; gap: 0; }
+.journey-step  {
+  flex: 1; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.journey-step:not(:last-child)::after {
+  content:''; position:absolute; top:18px; left:calc(50% + 28px); right:calc(-50% + 28px); height:2px; background:var(--border2);
+}
+.step-dot { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:white; position:relative; z-index:2; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+.step-dot.s1 { background: var(--milestone1); }
+.step-dot.s2 { background: var(--milestone2); }
+.step-dot.s3 { background: var(--milestone3); }
+.step-dot.s4 { background: var(--milestone4); }
+.step-name  { font-size: 11px; font-weight: 700; color: var(--text); text-align: center; }
+.step-count { font-size: 11px; color: var(--text-muted); }
+.step-rr    { font-size: 10px; font-weight: 600; color: var(--response-rate); }
+.step-drop  { font-size: 10px; font-weight: 600; color: var(--sad); }
+
+.insights-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.insight-card {
+  flex: 1; min-width: 200px; background: var(--white);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; box-shadow: var(--shadow);
+}
+.insight-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+.insight-text strong { font-size: 12px; font-weight: 700; display: block; margin-bottom: 2px; }
+.insight-text span   { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.insight-card.good { border-left: 3px solid var(--happy); }
+.insight-card.warn { border-left: 3px solid var(--passive); }
+.insight-card.bad  { border-left: 3px solid var(--sad); }
+.insight-card.info { border-left: 3px solid var(--accent); }
+
+.grid-2  { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.grid-3  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.grid-12 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px; }
+@media (max-width: 1024px) { .grid-12 { grid-template-columns: 1fr; } .grid-3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px)  { .grid-2, .grid-3, .grid-12 { grid-template-columns: 1fr; } }
+
+.card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
+.card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; gap: 8px; }
+.card-title    { font-size: 13px; font-weight: 700; color: var(--text); }
+.card-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.card-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 8px; border-radius: 20px; background: var(--accent-light); color: var(--accent); flex-shrink: 0; }
+.card-tag.green { background: var(--happy-light);         color: var(--happy); }
+.card-tag.amber { background: var(--fine-light);          color: var(--fine); }
+.card-tag.red   { background: var(--sad-light);           color: var(--sad); }
+.card-tag.blue  { background: var(--promoter-light);      color: var(--promoter); }
+.card-tag.teal  { background: var(--response-rate-light); color: var(--response-rate); }
+
+.chart-container canvas { max-height: 280px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); font-weight: 500; }
+.legend-dot  { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+.site-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.site-table th {
+  background: var(--bg); font-weight: 700; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.4px; color: var(--text-muted); padding: 8px 12px;
+  text-align: left; border-bottom: 1px solid var(--border);
+}
+.site-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.site-table tr:last-child td { border-bottom: none; }
+.site-table tr:hover td { background: var(--bg); }
+.score-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.pill-green { background: var(--happy-light);         color: var(--happy); }
+.pill-amber { background: var(--fine-light);          color: var(--fine); }
+.pill-red   { background: var(--sad-light);           color: var(--sad); }
+.pill-blue  { background: var(--promoter-light);      color: var(--promoter); }
+.pill-teal  { background: var(--response-rate-light); color: var(--response-rate); }
+
+.mini-bar-wrap  { display: flex; align-items: center; gap: 6px; }
+.mini-bar-track { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.mini-bar-fill  { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.mini-bar-val   { font-size: 11px; font-weight: 700; min-width: 32px; text-align: right; }
+
+.nps-display { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 0; }
+.nps-big { font-family: 'Syne', sans-serif; font-size: 56px; font-weight: 800; line-height: 1; }
+.nps-big.positive { color: var(--happy); }
+.nps-big.neutral  { color: var(--fine); }
+.nps-big.negative { color: var(--sad); }
+.nps-label { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-weight: 600; }
+.nps-breakdown { display: flex; gap: 16px; margin-top: 14px; }
+.nps-bk-item  { text-align: center; }
+.nps-bk-val   { font-size: 18px; font-weight: 800; font-family: 'Syne', sans-serif; }
+.nps-bk-val.p { color: var(--promoter); }
+.nps-bk-val.n { color: var(--passive); }
+.nps-bk-val.d { color: var(--detractor); }
+.nps-bk-label { font-size: 10px; color: var(--text-muted); font-weight: 600; margin-top: 2px; }
+
+.trend-toggles { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.ttoggle {
+  font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--border2); background: white; color: var(--text-muted);
+  cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.2s;
+}
+.ttoggle.active          { background: var(--accent);     color: white; border-color: var(--accent); }
+.ttoggle.s1.active       { background: var(--milestone1); border-color: var(--milestone1); }
+.ttoggle.s2.active       { background: var(--milestone2); border-color: var(--milestone2); }
+.ttoggle.s3.active       { background: var(--milestone3); border-color: var(--milestone3); }
+.ttoggle.s4.active       { background: var(--milestone4); border-color: var(--milestone4); }
+
+/* KEY INSIGHTS PANEL */
+.ki-section { margin-bottom: 20px; }
+.ki-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+.ki-section-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -0.2px; display: flex; align-items: center; gap: 8px; }
+.ki-section-title span.ki-badge { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 3px 9px; border-radius: 20px; background: var(--fd-midnight); color: var(--fd-mint); border: 1px solid rgba(139,240,187,0.3); }
+.ki-section-sub { font-size: 11px; color: var(--text-muted); }
+.ki-panel { background: var(--fd-midnight); border-radius: var(--radius); padding: 24px; box-shadow: 0 8px 32px rgba(9,9,45,0.18); border: 1px solid rgba(75,75,249,0.2); }
+.ki-summary-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.ki-summary-card { background: rgba(75,75,249,0.12); border: 1px solid rgba(75,75,249,0.25); border-radius: 10px; padding: 14px 16px; text-align: center; transition: background 0.2s; }
+.ki-summary-card:hover { background: rgba(75,75,249,0.2); }
+.ki-summary-card .ki-sc-val { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: #fff; line-height: 1; margin-bottom: 4px; }
+.ki-summary-card .ki-sc-val.ki-green  { color: var(--fd-mint); }
+.ki-summary-card .ki-sc-val.ki-yellow { color: var(--fd-lemon); }
+.ki-summary-card .ki-sc-val.ki-red    { color: var(--fd-coral); }
+.ki-summary-card .ki-sc-val.ki-indigo { color: var(--fd-lavender); }
+.ki-summary-card .ki-sc-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.45); }
+.ki-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 768px) { .ki-grid { grid-template-columns: 1fr; } }
+.ki-col-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: rgba(255,255,255,0.35); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.ki-col-title::after { content:''; flex:1; height:1px; background:rgba(255,255,255,0.08); }
+.ki-finding { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px; border-radius: 9px; margin-bottom: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); transition: background 0.2s; }
+.ki-finding:hover { background: rgba(255,255,255,0.07); }
+.ki-finding:last-child { margin-bottom: 0; }
+.ki-finding-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+.ki-finding-dot.good { background: var(--fd-mint); }
+.ki-finding-dot.warn { background: var(--fd-lemon); }
+.ki-finding-dot.bad  { background: var(--fd-coral); }
+.ki-finding-dot.info { background: var(--fd-lavender); }
+.ki-finding-body strong { font-size:12px; font-weight:700; color:#fff; display:block; margin-bottom:2px; line-height:1.3; }
+.ki-finding-body span   { font-size:11px; color:rgba(255,255,255,0.5); line-height:1.5; }
+.ki-rec { display:flex; align-items:flex-start; gap:10px; padding:11px 13px; border-radius:9px; margin-bottom:8px; border:1px solid rgba(139,240,187,0.15); background:rgba(139,240,187,0.05); transition:background 0.2s; }
+.ki-rec:hover { background: rgba(139,240,187,0.09); }
+.ki-rec:last-child { margin-bottom: 0; }
+.ki-rec.ki-rec-yellow   { border-color:rgba(249,239,119,0.18); background:rgba(249,239,119,0.05); }
+.ki-rec.ki-rec-yellow:hover { background:rgba(249,239,119,0.09); }
+.ki-rec.ki-rec-coral    { border-color:rgba(255,141,150,0.18); background:rgba(255,141,150,0.05); }
+.ki-rec.ki-rec-coral:hover  { background:rgba(255,141,150,0.09); }
+.ki-rec.ki-rec-lavender { border-color:rgba(191,161,255,0.18); background:rgba(191,161,255,0.05); }
+.ki-rec.ki-rec-lavender:hover { background:rgba(191,161,255,0.09); }
+.ki-rec-num { width:20px; height:20px; border-radius:50%; background:var(--fd-indigo); color:#fff; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.ki-rec-num.yellow   { background:var(--fd-lemon);    color:var(--fd-midnight); }
+.ki-rec-num.coral    { background:var(--fd-coral);    color:var(--fd-midnight); }
+.ki-rec-num.lavender { background:var(--fd-lavender); color:var(--fd-midnight); }
+.ki-rec-body strong { font-size:12px; font-weight:700; color:#fff; display:block; margin-bottom:2px; line-height:1.3; }
+.ki-rec-body span   { font-size:11px; color:rgba(255,255,255,0.5); line-height:1.5; }
+.ki-priority-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-top:18px; border-top:1px solid rgba(255,255,255,0.07); }
+.ki-priority-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:rgba(255,255,255,0.3); margin-right:4px; }
+.ki-pill { font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px; display:flex; align-items:center; gap:5px; cursor:default; }
+.ki-pill.p1 { background:rgba(255,141,150,0.15); color:var(--fd-coral);  border:1px solid rgba(255,141,150,0.3); }
+.ki-pill.p2 { background:rgba(249,239,119,0.12); color:var(--fd-lemon); border:1px solid rgba(249,239,119,0.25); }
+.ki-pill.p3 { background:rgba(139,240,187,0.12); color:var(--fd-mint);  border:1px solid rgba(139,240,187,0.25); }
+.ki-powered { text-align:right; margin-top:10px; font-size:10px; color:rgba(255,255,255,0.2); font-weight:500; letter-spacing:0.3px; }
+
+.footer { text-align:center; padding:20px; font-size:11px; color:var(--text-light); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <div class="brand-icon">🎓</div>
+    <div class="brand-text">
+      <h1>NH Survey Dashboard</h1>
+      <p>New Hire Journey · CSAT & NPS Analytics</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="file-badge" id="fileBadge">No file loaded</span>
+    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Upload Excel
+    </button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(event)">
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+    <div class="uz-icon">📊</div>
+    <h3>Upload your NH Survey Excel file</h3>
+    <p>Supports .xlsx, .xls, .csv — Expected columns: Milestone, CSAT, NPS, SITE, MONTH, YEAR</p>
+    <button class="uz-btn" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">Choose File</button>
+  </div>
+
+  <div class="dashboard" id="dashboard">
+
+    <!-- FILTERS -->
+    <div class="filter-bar">
+      <span class="filter-label">🔍 Filters</span>
+      <div class="filter-divider"></div>
+      <div class="filter-group">
+        <span class="filter-label">Year</span>
+        <select class="filter-select" id="fYear" onchange="applyFilters()"><option value="">All Years</option></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Month</span>
+        <select class="filter-select" id="fMonth" onchange="applyFilters()"><option value="">All Months</option></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Site</span>
+        <select class="filter-select" id="fSite" onchange="applyFilters()"><option value="">All Sites</option></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Milestone</span>
+        <select class="filter-select" id="fMilestone" onchange="applyFilters()"><option value="">All Milestones</option></select>
+      </div>
+      <div class="filter-divider"></div>
+      <button class="reset-btn" onclick="resetFilters()">↺ Reset</button>
+      <span class="filter-count" id="filterCount">— records</span>
+    </div>
+
+    <!-- MILESTONE JOURNEY -->
+    <div class="journey-bar">
+      <div class="journey-title">🚀 New Hire Journey — Milestone Funnel</div>
+      <div class="journey-steps" id="journeySteps"></div>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-total">
+        <div class="kpi-emoji">📋</div>
+        <div class="kpi-label">Total Responses</div>
+        <div class="kpi-value" id="kTotal">—</div>
+        <div class="kpi-sub">Completed surveys</div>
+      </div>
+      <div class="kpi-card kpi-invited">
+        <div class="kpi-emoji">📨</div>
+        <div class="kpi-label">Invited</div>
+        <div class="kpi-value" id="kInvited">—</div>
+        <div class="kpi-sub">Total applicants invited</div>
+      </div>
+      <div class="kpi-card kpi-rr">
+        <div class="kpi-emoji">📬</div>
+        <div class="kpi-label">Response Rate</div>
+        <div class="kpi-value" id="kRR">—</div>
+        <div class="rr-ring-wrap">
+          <div class="rr-ring-track"><div class="rr-ring-fill" id="kRRBar" style="width:0%"></div></div>
+          <span class="rr-ring-label" id="kRRSub">of invited</span>
+        </div>
+      </div>
+      <div class="kpi-card kpi-happy">
+        <div class="kpi-emoji">😊</div>
+        <div class="kpi-label">Happy Rate</div>
+        <div class="kpi-value" id="kHappy">—</div>
+        <div class="kpi-sub">CSAT = HAPPY</div>
+      </div>
+      <div class="kpi-card kpi-nps">
+        <div class="kpi-emoji">📈</div>
+        <div class="kpi-label">NPS Score</div>
+        <div class="kpi-value" id="kNPS">—</div>
+        <div class="kpi-sub">Promoter − Detractor %</div>
+      </div>
+      <div class="kpi-card kpi-promoter">
+        <div class="kpi-emoji">🌟</div>
+        <div class="kpi-label">Promoters</div>
+        <div class="kpi-value" id="kPromoter">—</div>
+        <div class="kpi-sub">NPS respondents</div>
+      </div>
+      <div class="kpi-card kpi-passive">
+        <div class="kpi-emoji">😐</div>
+        <div class="kpi-label">Passives</div>
+        <div class="kpi-value" id="kPassive">—</div>
+        <div class="kpi-sub">NPS respondents</div>
+      </div>
+      <div class="kpi-card kpi-detractor">
+        <div class="kpi-emoji">⚠️</div>
+        <div class="kpi-label">Detractors</div>
+        <div class="kpi-value" id="kDetractor">—</div>
+        <div class="kpi-sub">NPS respondents</div>
+      </div>
+    </div>
+
+    <!-- INSIGHTS -->
+    <div class="insights-bar" id="insightsBar"></div>
+
+    <!-- ROW 1: CSAT + NPS by Milestone -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">CSAT by Milestone</div><div class="card-subtitle">Emotional response at each journey stage</div></div>
+          <span class="card-tag green">CSAT</span>
+        </div>
+        <div class="chart-container"><canvas id="csatMilestone"></canvas></div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>Happy</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ca8a04"></div>Fine</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div>Sad</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Angry</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">NPS by Milestone</div><div class="card-subtitle">Advocacy level across the journey</div></div>
+          <span class="card-tag blue">NPS</span>
+        </div>
+        <div class="chart-container"><canvas id="npsMilestone"></canvas></div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9"></div>Promoter</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Passive</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Detractor</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2: NPS Score + CSAT by Site + NPS by Site -->
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">NPS Score</div><div class="card-subtitle">Net Promoter Score summary</div></div>
+          <span class="card-tag blue">NET</span>
+        </div>
+        <div class="nps-display">
+          <div class="nps-big" id="npsGaugeBig">—</div>
+          <div class="nps-label" id="npsGaugeLabel">Loading...</div>
+          <div class="nps-breakdown">
+            <div class="nps-bk-item"><div class="nps-bk-val p" id="ngP">—</div><div class="nps-bk-label">Promoters</div></div>
+            <div class="nps-bk-item"><div class="nps-bk-val n" id="ngN">—</div><div class="nps-bk-label">Passives</div></div>
+            <div class="nps-bk-item"><div class="nps-bk-val d" id="ngD">—</div><div class="nps-bk-label">Detractors</div></div>
+          </div>
+        </div>
+        <div style="margin-top:8px"><div id="npsMilestoneMini"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">CSAT by Site</div><div class="card-subtitle">Happy % per location</div></div>
+          <span class="card-tag green">SITE</span>
+        </div>
+        <div class="chart-container"><canvas id="csatSite"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">NPS by Site</div><div class="card-subtitle">Net Promoter Score per location</div></div>
+          <span class="card-tag blue">SITE</span>
+        </div>
+        <div class="chart-container"><canvas id="npsSite"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ROW 3: Response Rate by Site (one row per site) -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Response Rate by Site</div>
+          <div class="card-subtitle">Invited vs. completed surveys per location</div>
+        </div>
+        <span class="card-tag teal">RR</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="site-table">
+          <thead>
+            <tr>
+              <th>Site</th>
+              <th>Invited</th>
+              <th>Responded</th>
+              <th>Response Rate</th>
+              <th>Not Responded</th>
+            </tr>
+          </thead>
+          <tbody id="rrTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ROW 4: Monthly Trend + CSAT Doughnut -->
+    <div class="grid-12">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Monthly Response Trend</div><div class="card-subtitle">Survey volume over time</div></div>
+          <span class="card-tag">TREND</span>
+        </div>
+        <div class="trend-toggles" id="trendToggles">
+          <button class="ttoggle active"  data-m="ALL"           onclick="setTrendMode('ALL',this)">All</button>
+          <button class="ttoggle s1"      data-m="ONBOARDING"    onclick="setTrendMode('ONBOARDING',this)">Onboarding</button>
+          <button class="ttoggle s2"      data-m="TRAINING"      onclick="setTrendMode('TRAINING',this)">Training</button>
+          <button class="ttoggle s3"      data-m="NESTING"       onclick="setTrendMode('NESTING',this)">Nesting</button>
+          <button class="ttoggle s4"      data-m="NH PRODUCTION"  onclick="setTrendMode('NH PRODUCTION',this)">Production</button>
+        </div>
+        <div class="chart-container"><canvas id="trendChart" style="max-height:220px"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">CSAT Distribution</div><div class="card-subtitle">Overall sentiment breakdown</div></div>
+          <span class="card-tag green">%</span>
+        </div>
+        <div class="chart-container"><canvas id="csatDoughnut"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ROW 5: Site Performance Summary (one row per site) -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Site Performance Summary</div>
+          <div class="card-subtitle">CSAT Happy % and NPS Score by site</div>
+        </div>
+        <span class="card-tag">TABLE</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="site-table">
+          <thead>
+            <tr>
+              <th>Site</th>
+              <th>Invited</th>
+              <th>Responded</th>
+              <th>Resp. Rate</th>
+              <th>Happy %</th>
+              <th>Fine %</th>
+              <th>Sad %</th>
+              <th>NPS Score</th>
+              <th>Promoter %</th>
+              <th>Detractor %</th>
+              <th>Rating</th>
+            </tr>
+          </thead>
+          <tbody id="siteTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- KEY INSIGHTS & RECOMMENDATIONS -->
+    <div class="ki-section" id="kiSection">
+      <div class="ki-section-header">
+        <div class="ki-section-title">
+          💡 Key Insights & Recommendations
+          <span class="ki-badge">Auto-generated</span>
+        </div>
+        <div class="ki-section-sub">Based on current filtered data · Updates with every filter change</div>
+      </div>
+      <div class="ki-panel">
+        <div class="ki-summary-strip" id="kiSummaryStrip"></div>
+        <div class="ki-grid">
+          <div><div class="ki-col-title">📊 Key Findings</div><div id="kiFindings"></div></div>
+          <div><div class="ki-col-title">🎯 Recommendations</div><div id="kiRecs"></div></div>
+        </div>
+        <div class="ki-priority-row" id="kiPriorityRow"></div>
+        <div class="ki-powered">Powered by EverGPT</div>
+      </div>
+    </div>
+
+  </div><!-- /dashboard -->
+</div><!-- /main -->
+
+<div class="footer">NH Survey Analytics Dashboard · Data updates automatically on file upload</div>
+
+<script>
+Chart.register(ChartDataLabels);
+
+const MILESTONE_ORDER  = ['ONBOARDING','TRAINING','NESTING','NH PRODUCTION'];
+const MILESTONE_LABELS = ['Onboarding','Training','Nesting','Production'];
+const MILESTONE_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b'];
+const MONTHS_ORDER = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CSAT_COLORS  = { 'HAPPY':'#16a34a','FINE':'#ca8a04','SAD':'#dc2626','ANGRY':'#7c3aed' };
+const NPS_COLORS   = { 'Promoter':'#0ea5e9','Passive':'#f59e0b','Detractor':'#ef4444' };
+
+let allData = [], filteredData = [], charts = {}, trendMode = 'ALL';
+
+function pct(n, total) { return total ? Math.round(n / total * 100) : 0; }
+function npsScore(rows) {
+  const nr = rows.filter(r => ['Promoter','Passive','Detractor'].includes(r.nps));
+  if (!nr.length) return null;
+  return pct(nr.filter(r=>r.nps==='Promoter').length, nr.length) - pct(nr.filter(r=>r.nps==='Detractor').length, nr.length);
+}
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+function isRespondent(r) {
+  return ['HAPPY','FINE','SAD','ANGRY'].includes(r.csat) || ['Promoter','Passive','Detractor'].includes(r.nps);
+}
+
+const TOOLTIP_STYLE = {
+  backgroundColor:'#1e293b', borderColor:'#334155', borderWidth:1,
+  titleColor:'#f1f5f9', bodyColor:'#94a3b8', padding:10,
+  titleFont:{family:'Plus Jakarta Sans',weight:'700'}, bodyFont:{family:'Plus Jakarta Sans'}
+};
+
+// ── FILE HANDLING ─────────────────────────────────────────────────────────────
+function handleFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      let rows;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        rows = parseCSV(ev.target.result);
+      } else {
+        const wb = XLSX.read(ev.target.result, {type:'binary'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+      }
+      allData = normalizeData(rows);
+      populateFilters();
+      applyFilters();
+      document.getElementById('uploadZone').classList.add('hidden');
+      document.getElementById('dashboard').classList.add('visible');
+      const badge = document.getElementById('fileBadge');
+      badge.textContent = `✓ ${file.name} (${allData.length.toLocaleString()} rows)`;
+      badge.className = 'file-badge loaded';
+    } catch(err) { alert('Error reading file: ' + err.message); }
+  };
+  if (file.name.toLowerCase().endsWith('.csv')) reader.readAsText(file);
+  else reader.readAsBinaryString(file);
+  e.target.value = '';
+}
+
+function parseCSV(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
+    const obj = {}; headers.forEach((h,i) => obj[h] = vals[i]||''); return obj;
+  });
+}
+
+function normalizeData(rows) {
+  const MILESTONE_ALIAS = {
+    'core skills':'ONBOARDING','onboarding':'ONBOARDING',
+    'training':'TRAINING','neo 30th':'NESTING','nesting':'NESTING','nh production':'NH PRODUCTION'
+  };
+  return rows.map(r => {
+    const n = {};
+    Object.entries(r).forEach(([k,v]) => { n[k.toUpperCase().trim()] = (v||'').toString().trim(); });
+    const csatRaw = (n['CSAT']||'').toUpperCase();
+    const npsRaw  = n['NPS'] ? n['NPS'].charAt(0).toUpperCase()+n['NPS'].slice(1).toLowerCase() : '';
+    const csat    = ['HAPPY','FINE','SAD','ANGRY'].includes(csatRaw) ? csatRaw : '';
+    const nps     = ['Promoter','Passive','Detractor'].includes(npsRaw) ? npsRaw : '';
+    const rawMs   = (n['MILESTONE']||'').trim();
+    const ms      = MILESTONE_ALIAS[rawMs.toLowerCase()] || MILESTONE_ORDER.find(m=>m.toLowerCase()===rawMs.toLowerCase()) || rawMs;
+    const site    = (n['SITE']||'').toUpperCase();
+    const year    = parseInt(n['YEAR'])||0;
+    const month   = n['MONTH']||'';
+    return { milestone:ms, csat, nps, site, year, month, _valid: year>=2020 && !!ms };
+  }).filter(r => r._valid);
+}
+
+// ── FILTERS ───────────────────────────────────────────────────────────────────
+function populateFilters() {
+  const years      = [...new Set(allData.map(r=>r.year))].filter(v=>v).sort();
+  const sites      = [...new Set(allData.map(r=>r.site))].filter(v=>v).sort();
+  const milestones = MILESTONE_ORDER.filter(m => allData.some(r=>r.milestone===m));
+  sel('fYear',      years.map(v=>({v,l:v})));
+  sel('fMonth',     MONTHS_ORDER.filter(m=>allData.some(r=>r.month===m)).map(v=>({v,l:v})));
+  sel('fSite',      sites.map(v=>({v,l:v})));
+  sel('fMilestone', milestones.map(v=>({v,l:MILESTONE_LABELS[MILESTONE_ORDER.indexOf(v)]||v})));
+}
+function sel(id, opts) {
+  const el = document.getElementById(id);
+  const cur = el.value;
+  el.innerHTML = `<option value="">${el.options[0].text}</option>` +
+    opts.map(o=>`<option value="${o.v}"${o.v==cur?' selected':''}>${o.l}</option>`).join('');
+}
+function applyFilters() {
+  const fy  = document.getElementById('fYear').value;
+  const fm  = document.getElementById('fMonth').value;
+  const fs  = document.getElementById('fSite').value;
+  const fms = document.getElementById('fMilestone').value;
+  filteredData = allData.filter(r =>
+    (!fy  || r.year==fy) && (!fm || r.month===fm) && (!fs || r.site===fs) && (!fms || r.milestone===fms)
+  );
+  const invited   = filteredData.length;
+  const responded = filteredData.filter(isRespondent).length;
+  document.getElementById('filterCount').textContent =
+    `${responded.toLocaleString()} responses · ${invited.toLocaleString()} invited`;
+  renderAll();
+}
+function resetFilters() {
+  ['fYear','fMonth','fSite','fMilestone'].forEach(id => document.getElementById(id).value='');
+  applyFilters();
+}
+
+// ── RENDER ALL ────────────────────────────────────────────────────────────────
+function renderAll() {
+  if (!filteredData.length) return;
+  renderKPIs();
+  renderJourney();
+  renderInsights();
+  renderCSATMilestone();
+  renderNPSMilestone();
+  renderNPSGauge();
+  renderCSATSite();
+  renderNPSSite();
+  renderRRTable();
+  renderTrend();
+  renderCSATDoughnut();
+  renderSiteTable();
+  renderKeyInsights();
+}
+
+// ── KPIs ──────────────────────────────────────────────────────────────────────
+function renderKPIs() {
+  const invited    = filteredData.length;
+  const responded  = filteredData.filter(isRespondent).length;
+  const rrPct      = pct(responded, invited);
+  const npsRows    = filteredData.filter(r=>['Promoter','Passive','Detractor'].includes(r.nps));
+  const csatRows   = filteredData.filter(r=>['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));
+  const pCount     = npsRows.filter(r=>r.nps==='Promoter').length;
+  const nCount     = npsRows.filter(r=>r.nps==='Passive').length;
+  const dCount     = npsRows.filter(r=>r.nps==='Detractor').length;
+  const nps        = npsRows.length ? Math.round(pct(pCount,npsRows.length)-pct(dCount,npsRows.length)) : 0;
+  const happyPct   = csatRows.length ? pct(csatRows.filter(r=>r.csat==='HAPPY').length, csatRows.length) : 0;
+
+  document.getElementById('kTotal').textContent     = responded.toLocaleString();
+  document.getElementById('kInvited').textContent   = invited.toLocaleString();
+  document.getElementById('kRR').textContent        = rrPct + '%';
+  document.getElementById('kRRBar').style.width     = rrPct + '%';
+  document.getElementById('kRRSub').textContent     = `${responded.toLocaleString()} of ${invited.toLocaleString()}`;
+  document.getElementById('kHappy').textContent     = happyPct + '%';
+  document.getElementById('kNPS').textContent       = (nps>=0?'+':'')+nps;
+  document.getElementById('kPromoter').textContent  = pct(pCount, npsRows.length)+'%';
+  document.getElementById('kPassive').textContent   = pct(nCount, npsRows.length)+'%';
+  document.getElementById('kDetractor').textContent = pct(dCount, npsRows.length)+'%';
+}
+
+// ── JOURNEY FUNNEL ────────────────────────────────────────────────────────────
+function renderJourney() {
+  const container = document.getElementById('journeySteps');
+  const invited   = MILESTONE_ORDER.map(m => filteredData.filter(r=>r.milestone===m).length);
+  const responded = MILESTONE_ORDER.map(m => filteredData.filter(r=>r.milestone===m && isRespondent(r)).length);
+  container.innerHTML = MILESTONE_ORDER.map((m,i) => {
+    const drop = i>0 && invited[i-1]>0 ? Math.round((invited[i-1]-invited[i])/invited[i-1]*100) : null;
+    const rrMs = pct(responded[i], invited[i]);
+    return `<div class="journey-step">
+      <div class="step-dot s${i+1}">${i+1}</div>
+      <div class="step-name">${MILESTONE_LABELS[i]}</div>
+      <div class="step-count">${responded[i].toLocaleString()} responded</div>
+      <div class="step-rr">📬 ${rrMs}% RR (${invited[i]} invited)</div>
+      ${drop!==null?`<div class="step-drop">▼ ${drop}% drop</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── INSIGHTS ──────────────────────────────────────────────────────────────────
+function renderInsights() {
+  const respondents = filteredData.filter(isRespondent);
+  const insights    = [];
+  const rrPct       = pct(respondents.length, filteredData.length);
+  insights.push({
+    type: rrPct>=70?'good':rrPct>=40?'warn':'bad',
+    icon: rrPct>=70?'📬':rrPct>=40?'📭':'🚨',
+    title:`Response Rate: ${rrPct}%`,
+    text: `${respondents.length.toLocaleString()} of ${filteredData.length.toLocaleString()} invited completed the survey.`
+  });
+  const sites     = [...new Set(filteredData.map(r=>r.site))].filter(v=>v);
+  const siteHappy = sites.map(s => {
+    const sr = filteredData.filter(r=>r.site===s && ['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));
+    return {site:s, pct:sr.length?pct(sr.filter(r=>r.csat==='HAPPY').length,sr.length):null, n:sr.length};
+  }).filter(x=>x.n>0&&x.pct!==null).sort((a,b)=>b.pct-a.pct);
+  if (siteHappy.length) {
+    insights.push({type:'good',icon:'🏆',title:`Top Site: ${siteHappy[0].site}`,text:`Highest CSAT Happy rate at ${siteHappy[0].pct}% (${siteHappy[0].n.toLocaleString()} responses)`});
+    insights.push({type:'bad',icon:'⚠️',title:`Watch: ${siteHappy[siteHappy.length-1].site}`,text:`Lowest CSAT Happy rate at ${siteHappy[siteHappy.length-1].pct}% (${siteHappy[siteHappy.length-1].n.toLocaleString()} responses)`});
+  }
+  const msNPS = MILESTONE_ORDER.map(m => {
+    const mr  = filteredData.filter(r=>r.milestone===m&&['Promoter','Passive','Detractor'].includes(r.nps));
+    const det = mr.length?pct(mr.filter(r=>r.nps==='Detractor').length,mr.length):0;
+    return {ms:m,det,n:mr.length};
+  }).filter(x=>x.n>10).sort((a,b)=>b.det-a.det);
+  if (msNPS.length) insights.push({type:'warn',icon:'📉',title:`Most Detractors: ${MILESTONE_LABELS[MILESTONE_ORDER.indexOf(msNPS[0].ms)]||msNPS[0].ms}`,text:`${msNPS[0].det}% detractor rate at this milestone`});
+  const nps = npsScore(respondents);
+  if (nps!==null) insights.push({
+    type:nps>=30?'good':nps>=0?'info':'bad',
+    icon:nps>=30?'🌟':nps>=0?'📊':'🚨',
+    title:`Overall NPS: ${nps>=0?'+':''}${nps}`,
+    text:nps>=50?'Excellent — hires are strong advocates':nps>=0?'Needs improvement':'Critical — more detractors than promoters'
+  });
+  document.getElementById('insightsBar').innerHTML = insights.map(i=>`
+    <div class="insight-card ${i.type}">
+      <div class="insight-icon">${i.icon}</div>
+      <div class="insight-text"><strong>${i.title}</strong><span>${i.text}</span></div>
+    </div>`).join('');
+}
+
+// ── CSAT BY MILESTONE ─────────────────────────────────────────────────────────
+function renderCSATMilestone() {
+  destroyChart('csatMilestone');
+  const cats=['HAPPY','FINE','SAD','ANGRY']; const labels=[],rawCounts={};
+  cats.forEach(c=>rawCounts[c]=[]);
+  MILESTONE_ORDER.forEach((m,i)=>{
+    const rows=filteredData.filter(r=>r.milestone===m&&cats.includes(r.csat));
+    if(!rows.length&&!filteredData.some(r=>r.milestone===m))return;
+    labels.push(MILESTONE_LABELS[i]); const total=rows.length||1;
+    cats.forEach(cat=>rawCounts[cat].push({pct:Math.round(rows.filter(r=>r.csat===cat).length/total*100),count:rows.filter(r=>r.csat===cat).length,total}));
+  });
+  charts['csatMilestone']=new Chart(document.getElementById('csatMilestone'),{
+    type:'bar',data:{labels,datasets:cats.map(cat=>({label:cat.charAt(0)+cat.slice(1).toLowerCase(),data:rawCounts[cat].map(d=>d.pct),rawCounts:rawCounts[cat],backgroundColor:CSAT_COLORS[cat],borderRadius:0}))},
+    options:{plugins:{legend:{display:false},tooltip:{...TOOLTIP_STYLE,callbacks:{label:ctx=>{const rd=ctx.dataset.rawCounts[ctx.dataIndex];return ` ${ctx.dataset.label}: ${rd.count.toLocaleString()} (${rd.pct}%)`}}},datalabels:{color:'#fff',font:{weight:'700',family:'Plus Jakarta Sans',size:10},anchor:'center',align:'center',clamp:true,formatter:(v,ctx)=>{const rd=ctx.dataset.rawCounts[ctx.dataIndex];return v>=5?`${v}%\n(${rd.count.toLocaleString()})`:''}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'}}},y:{stacked:true,min:0,max:100,grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'},callback:v=>v+'%'}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// ── NPS BY MILESTONE ──────────────────────────────────────────────────────────
+function renderNPSMilestone() {
+  destroyChart('npsMilestone');
+  const cats=['Promoter','Passive','Detractor']; const labels=[],rawCounts={};
+  cats.forEach(c=>rawCounts[c]=[]);
+  MILESTONE_ORDER.forEach((m,i)=>{
+    const rows=filteredData.filter(r=>r.milestone===m&&cats.includes(r.nps));
+    if(!rows.length&&!filteredData.some(r=>r.milestone===m))return;
+    labels.push(MILESTONE_LABELS[i]); const total=rows.length||1;
+    cats.forEach(cat=>rawCounts[cat].push({pct:Math.round(rows.filter(r=>r.nps===cat).length/total*100),count:rows.filter(r=>r.nps===cat).length,total}));
+  });
+  charts['npsMilestone']=new Chart(document.getElementById('npsMilestone'),{
+    type:'bar',data:{labels,datasets:cats.map(cat=>({label:cat,data:rawCounts[cat].map(d=>d.pct),rawCounts:rawCounts[cat],backgroundColor:NPS_COLORS[cat],borderRadius:0}))},
+    options:{plugins:{legend:{display:false},tooltip:{...TOOLTIP_STYLE,callbacks:{label:ctx=>{const rd=ctx.dataset.rawCounts[ctx.dataIndex];return ` ${ctx.dataset.label}: ${rd.count.toLocaleString()} (${rd.pct}%)`}}},datalabels:{color:'#fff',font:{weight:'700',family:'Plus Jakarta Sans',size:10},anchor:'center',align:'center',clamp:true,formatter:(v,ctx)=>{const rd=ctx.dataset.rawCounts[ctx.dataIndex];return v>=5?`${v}%\n(${rd.count.toLocaleString()})`:''}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'}}},y:{stacked:true,min:0,max:100,grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'},callback:v=>v+'%'}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// ── NPS GAUGE ─────────────────────────────────────────────────────────────────
+function renderNPSGauge() {
+  const npsRows=filteredData.filter(r=>['Promoter','Passive','Detractor'].includes(r.nps));
+  const total=npsRows.length||1;
+  const pPct=pct(npsRows.filter(r=>r.nps==='Promoter').length,total);
+  const nPct=pct(npsRows.filter(r=>r.nps==='Passive').length,total);
+  const dPct=pct(npsRows.filter(r=>r.nps==='Detractor').length,total);
+  const score=pPct-dPct;
+  const big=document.getElementById('npsGaugeBig');
+  big.textContent=(score>=0?'+':'')+score;
+  big.className='nps-big '+(score>=30?'positive':score>=0?'neutral':'negative');
+  document.getElementById('npsGaugeLabel').textContent=score>=50?'🌟 Excellent':score>=30?'✅ Good':score>=0?'⚡ Needs Work':'🚨 Critical';
+  document.getElementById('ngP').textContent=pPct+'%';
+  document.getElementById('ngN').textContent=nPct+'%';
+  document.getElementById('ngD').textContent=dPct+'%';
+  const miniHtml=MILESTONE_ORDER.map((m,i)=>{
+    const mr=filteredData.filter(r=>r.milestone===m&&['Promoter','Passive','Detractor'].includes(r.nps));
+    if(!mr.length)return'';
+    const s=Math.round(pct(mr.filter(r=>r.nps==='Promoter').length,mr.length)-pct(mr.filter(r=>r.nps==='Detractor').length,mr.length));
+    const color=s>=30?'var(--happy)':s>=0?'var(--fine)':'var(--sad)';
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:11px;font-weight:600;color:#64748b">${MILESTONE_LABELS[i]}</span><span style="font-size:13px;font-weight:800;font-family:Syne,sans-serif;color:${color}">${s>=0?'+':''}${s}</span></div>`;
+  }).join('');
+  document.getElementById('npsMilestoneMini').innerHTML=miniHtml;
+}
+
+// ── CSAT BY SITE ──────────────────────────────────────────────────────────────
+function renderCSATSite() {
+  destroyChart('csatSite');
+  const sites=[...new Set(filteredData.map(r=>r.site))].filter(v=>v).sort();
+  const data=sites.map(s=>{const sr=filteredData.filter(r=>r.site===s&&['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));return sr.length?pct(sr.filter(r=>r.csat==='HAPPY').length,sr.length):0;});
+  charts['csatSite']=new Chart(document.getElementById('csatSite'),{
+    type:'bar',data:{labels:sites,datasets:[{label:'Happy %',data,backgroundColor:data.map(v=>v>=70?'#16a34a':v>=50?'#ca8a04':'#dc2626'),borderRadius:6,borderSkipped:false}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:TOOLTIP_STYLE,datalabels:{color:'#fff',font:{weight:'700',family:'Plus Jakarta Sans',size:10},anchor:'center',align:'center',formatter:v=>v+'%'}},scales:{x:{min:0,max:100,grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'},callback:v=>v+'%'}},y:{grid:{display:false},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans',size:11}}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// ── NPS BY SITE ───────────────────────────────────────────────────────────────
+function renderNPSSite() {
+  destroyChart('npsSite');
+  const sites=[...new Set(filteredData.map(r=>r.site))].filter(v=>v).sort();
+  const data=sites.map(s=>{const sr=filteredData.filter(r=>r.site===s&&['Promoter','Passive','Detractor'].includes(r.nps));return sr.length?Math.round(pct(sr.filter(r=>r.nps==='Promoter').length,sr.length)-pct(sr.filter(r=>r.nps==='Detractor').length,sr.length)):0;});
+  charts['npsSite']=new Chart(document.getElementById('npsSite'),{
+    type:'bar',data:{labels:sites,datasets:[{label:'NPS Score',data,backgroundColor:data.map(v=>v>=30?'#0ea5e9':v>=0?'#f59e0b':'#ef4444'),borderRadius:6,borderSkipped:false}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:TOOLTIP_STYLE,datalabels:{color:'#fff',font:{weight:'700',family:'Plus Jakarta Sans',size:10},anchor:'center',align:'center',formatter:v=>(v>=0?'+':'')+v}},scales:{x:{grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'}}},y:{grid:{display:false},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans',size:11}}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// ── RESPONSE RATE TABLE — one row per site ────────────────────────────────────
+function renderRRTable() {
+  const sites = [...new Set(filteredData.map(r=>r.site))].filter(v=>v).sort();
+  const tbody = document.getElementById('rrTableBody');
+  const rows  = [];
+
+  sites.forEach(s => {
+    const bucket    = filteredData.filter(r => r.site===s);
+    if (!bucket.length) return;
+    const invited   = bucket.length;
+    const responded = bucket.filter(isRespondent).length;
+    const notResp   = invited - responded;
+    const rrP       = pct(responded, invited);
+    const rrCls     = rrP>=70?'pill-green':rrP>=40?'pill-amber':'pill-red';
+    rows.push(`<tr>
+      <td style="font-weight:700">${s}</td>
+      <td>${invited.toLocaleString()}</td>
+      <td>${responded.toLocaleString()}</td>
+      <td>
+        <span class="score-pill ${rrCls}">${rrP}%</span>
+        <div class="mini-bar-wrap" style="margin-top:4px">
+          <div class="mini-bar-track">
+            <div class="mini-bar-fill" style="width:${rrP}%;background:var(--response-rate)"></div>
+          </div>
+        </div>
+      </td>
+      <td style="color:var(--sad);font-weight:600">${notResp.toLocaleString()}</td>
+    </tr>`);
+  });
+
+  // Totals row
+  const totalInvited   = filteredData.length;
+  const totalResponded = filteredData.filter(isRespondent).length;
+  const totalNotResp   = totalInvited - totalResponded;
+  const totalRR        = pct(totalResponded, totalInvited);
+  const totalCls       = totalRR>=70?'pill-green':totalRR>=40?'pill-amber':'pill-red';
+  rows.push(`<tr style="background:var(--bg);font-weight:700">
+    <td>TOTAL</td>
+    <td>${totalInvited.toLocaleString()}</td>
+    <td>${totalResponded.toLocaleString()}</td>
+    <td><span class="score-pill ${totalCls}">${totalRR}%</span></td>
+    <td style="color:var(--sad)">${totalNotResp.toLocaleString()}</td>
+  </tr>`);
+
+  tbody.innerHTML = rows.join('');
+}
+
+// ── TREND ─────────────────────────────────────────────────────────────────────
+function setTrendMode(mode,btn) {
+  trendMode=mode;
+  document.querySelectorAll('.ttoggle').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderTrend();
+}
+function renderTrend() {
+  destroyChart('trendChart');
+  const monthKey=m=>`${m.year}-${String(MONTHS_ORDER.indexOf(m.month)+1).padStart(2,'0')}`;
+  const src=trendMode==='ALL'?filteredData:filteredData.filter(r=>r.milestone===trendMode);
+  const respSrc=src.filter(isRespondent);
+  const map={};
+  respSrc.forEach(r=>{if(!r.month||!r.year)return;const k=monthKey(r);map[k]=(map[k]||0)+1;});
+  const sorted=Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(!sorted.length)return;
+  const color=trendMode==='ALL'?'#6366f1':MILESTONE_COLORS[MILESTONE_ORDER.indexOf(trendMode)];
+  charts['trendChart']=new Chart(document.getElementById('trendChart'),{
+    type:'line',
+    data:{labels:sorted.map(e=>{const[y,m]=e[0].split('-');return MONTHS_ORDER[parseInt(m)-1].slice(0,3)+' '+y;}),datasets:[{label:'Responses',data:sorted.map(e=>e[1]),borderColor:color,backgroundColor:color+'18',fill:true,tension:0.4,pointBackgroundColor:color,pointRadius:3,pointHoverRadius:5,borderWidth:2}]},
+    options:{plugins:{legend:{display:false},tooltip:TOOLTIP_STYLE,datalabels:{color,font:{weight:'700',family:'Plus Jakarta Sans',size:9},anchor:'top',align:'top',formatter:v=>v>0?v:''}},scales:{x:{grid:{display:false},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans',size:10},maxRotation:45}},y:{grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{family:'Plus Jakarta Sans'}}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// ── CSAT DOUGHNUT ─────────────────────────────────────────────────────────────
+function renderCSATDoughnut() {
+  destroyChart('csatDoughnut');
+  const cats=['HAPPY','FINE','SAD','ANGRY'];
+  const csatRows=filteredData.filter(r=>cats.includes(r.csat));
+  const data=cats.map(c=>csatRows.filter(r=>r.csat===c).length);
+  charts['csatDoughnut']=new Chart(document.getElementById('csatDoughnut'),{
+    type:'doughnut',
+    data:{labels:['Happy 😊','Fine 😊','Sad 😞','Angry 😡'],datasets:[{data,backgroundColor:cats.map(c=>CSAT_COLORS[c]),borderWidth:0,hoverOffset:6}]},
+    options:{cutout:'55%',plugins:{legend:{position:'bottom',labels:{color:'#64748b',font:{family:'Plus Jakarta Sans',size:11},padding:12}},tooltip:TOOLTIP_STYLE,datalabels:{color:'#fff',font:{weight:'700',family:'Plus Jakarta Sans',size:10},formatter:(v,ctx)=>{const total=ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);return total>0&&v>0?`${v.toLocaleString()}\n${Math.round(v/total*100)}%`:''}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// ── SITE TABLE — one row per site ─────────────────────────────────────────────
+function renderSiteTable() {
+  const sites=[...new Set(filteredData.map(r=>r.site))].filter(v=>v).sort();
+  const tbody=document.getElementById('siteTableBody');
+  tbody.innerHTML=sites.map(s=>{
+    const sr        = filteredData.filter(r=>r.site===s);
+    const invitedN  = sr.length;
+    const respondedN= sr.filter(isRespondent).length;
+    const rrP       = pct(respondedN, invitedN);
+    const csatRows  = sr.filter(r=>['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));
+    const npsRows   = sr.filter(r=>['Promoter','Passive','Detractor'].includes(r.nps));
+    const happyPct  = csatRows.length?pct(csatRows.filter(r=>r.csat==='HAPPY').length,csatRows.length):0;
+    const finePct   = csatRows.length?pct(csatRows.filter(r=>r.csat==='FINE').length,csatRows.length):0;
+    const sadPct    = csatRows.length?pct(csatRows.filter(r=>r.csat==='SAD').length,csatRows.length):0;
+    const promoPct  = npsRows.length?pct(npsRows.filter(r=>r.nps==='Promoter').length,npsRows.length):0;
+    const detPct    = npsRows.length?pct(npsRows.filter(r=>r.nps==='Detractor').length,npsRows.length):0;
+    const nps       = promoPct-detPct;
+    const rating    = happyPct>=70&&nps>=30?'🌟 Excellent':happyPct>=50&&nps>=0?'✅ Good':'⚠️ Needs Work';
+    const npsCls    = nps>=30?'pill-blue':nps>=0?'pill-amber':'pill-red';
+    const happyCls  = happyPct>=70?'pill-green':happyPct>=50?'pill-amber':'pill-red';
+    const rrCls     = rrP>=70?'pill-green':rrP>=40?'pill-amber':'pill-red';
+    return`<tr>
+      <td style="font-weight:700">${s}</td>
+      <td>${invitedN.toLocaleString()}</td>
+      <td>${respondedN.toLocaleString()}</td>
+      <td><span class="score-pill ${rrCls}">${rrP}%</span></td>
+      <td><span class="score-pill ${happyCls}">${happyPct}%</span></td>
+      <td>${finePct}%</td>
+      <td>${sadPct}%</td>
+      <td><span class="score-pill ${npsCls}">${nps>=0?'+':''}${nps}</span></td>
+      <td><div class="mini-bar-wrap"><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${promoPct}%;background:#0ea5e9"></div></div><span class="mini-bar-val" style="color:#0ea5e9">${promoPct}%</span></div></td>
+      <td><div class="mini-bar-wrap"><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${detPct}%;background:#ef4444"></div></div><span class="mini-bar-val" style="color:#ef4444">${detPct}%</span></div></td>
+      <td>${rating}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── KEY INSIGHTS & RECOMMENDATIONS ───────────────────────────────────────────
+function renderKeyInsights() {
+  const d=filteredData, respondents=d.filter(isRespondent);
+  if(!d.length)return;
+  const invited=d.length, responded=respondents.length, rrPct=pct(responded,invited);
+  const csatRows=respondents.filter(r=>['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));
+  const npsRows=respondents.filter(r=>['Promoter','Passive','Detractor'].includes(r.nps));
+  const happyPct=csatRows.length?pct(csatRows.filter(r=>r.csat==='HAPPY').length,csatRows.length):0;
+  const sadAngryPct=csatRows.length?pct(csatRows.filter(r=>['SAD','ANGRY'].includes(r.csat)).length,csatRows.length):0;
+  const promoterPct=npsRows.length?pct(npsRows.filter(r=>r.nps==='Promoter').length,npsRows.length):0;
+  const passivePct=npsRows.length?pct(npsRows.filter(r=>r.nps==='Passive').length,npsRows.length):0;
+  const detractorPct=npsRows.length?pct(npsRows.filter(r=>r.nps==='Detractor').length,npsRows.length):0;
+  const nps=promoterPct-detractorPct;
+  const sites=[...new Set(d.map(r=>r.site))].filter(v=>v);
+  const siteStats=sites.map(s=>{
+    const sc=d.filter(r=>r.site===s&&['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));
+    const sn=d.filter(r=>r.site===s&&['Promoter','Passive','Detractor'].includes(r.nps));
+    const si=d.filter(r=>r.site===s),sr=si.filter(isRespondent);
+    return{site:s,happy:sc.length?pct(sc.filter(r=>r.csat==='HAPPY').length,sc.length):0,nps:sn.length?pct(sn.filter(r=>r.nps==='Promoter').length,sn.length)-pct(sn.filter(r=>r.nps==='Detractor').length,sn.length):0,rr:pct(sr.length,si.length),n:si.length};
+  }).filter(x=>x.n>0).sort((a,b)=>b.happy-a.happy);
+  const topSite=siteStats[0]||null, bottomSite=siteStats[siteStats.length-1]||null;
+  const lowRRSite=[...siteStats].sort((a,b)=>a.rr-b.rr)[0]||null;
+  const msStats=MILESTONE_ORDER.map((m,i)=>{
+    const mc=d.filter(r=>r.milestone===m&&['HAPPY','FINE','SAD','ANGRY'].includes(r.csat));
+    const mn=d.filter(r=>r.milestone===m&&['Promoter','Passive','Detractor'].includes(r.nps));
+    const mi=d.filter(r=>r.milestone===m),mr=mi.filter(isRespondent);
+    return{ms:m,label:MILESTONE_LABELS[i],happy:mc.length?pct(mc.filter(r=>r.csat==='HAPPY').length,mc.length):0,detractor:mn.length?pct(mn.filter(r=>r.nps==='Detractor').length,mn.length):0,nps:mn.length?pct(mn.filter(r=>r.nps==='Promoter').length,mn.length)-pct(mn.filter(r=>r.nps==='Detractor').length,mn.length):0,rr:pct(mr.length,mi.length),n:mi.length};
+  }).filter(x=>x.n>0);
+  const weakestMs=[...msStats].sort((a,b)=>a.happy-b.happy)[0]||null;
+  const lowRRMs=[...msStats].sort((a,b)=>a.rr-b.rr)[0]||null;
+
+  // Summary strip
+  document.getElementById('kiSummaryStrip').innerHTML=[
+    {val:invited.toLocaleString(),label:'Total Invited',cls:'ki-indigo'},
+    {val:responded.toLocaleString(),label:'Total Responded',cls:'ki-indigo'},
+    {val:rrPct+'%',label:'Response Rate',cls:rrPct>=70?'ki-green':rrPct>=40?'ki-yellow':'ki-red'},
+    {val:happyPct+'%',label:'CSAT Happy Rate',cls:happyPct>=70?'ki-green':happyPct>=50?'ki-yellow':'ki-red'},
+    {val:(nps>=0?'+':'')+nps,label:'Net Promoter Score',cls:nps>=30?'ki-green':nps>=0?'ki-yellow':'ki-red'},
+    {val:sadAngryPct+'%',label:'Negative Sentiment',cls:sadAngryPct>20?'ki-red':sadAngryPct>10?'ki-yellow':'ki-green'}
+  ].map(c=>`<div class="ki-summary-card"><div class="ki-sc-val ${c.cls}">${c.val}</div><div class="ki-sc-label">${c.label}</div></div>`).join('');
+
+  // Findings
+  const findings=[];
+  findings.push({type:rrPct>=70?'good':rrPct>=40?'warn':'bad',title:`Response rate at ${rrPct}%`,text:rrPct>=70?`Strong participation: ${responded.toLocaleString()} of ${invited.toLocaleString()} invited responded.`:rrPct>=40?`Moderate participation: ${responded.toLocaleString()} of ${invited.toLocaleString()} responded. ${(invited-responded).toLocaleString()} unreached.`:`Low participation: only ${responded.toLocaleString()} of ${invited.toLocaleString()} responded. Data coverage is limited.`});
+  if(happyPct>=70)findings.push({type:'good',title:'Strong CSAT performance',text:`${happyPct}% Happy rate — above the 70% excellence threshold.`});
+  else if(happyPct>=50)findings.push({type:'warn',title:'CSAT needs attention',text:`Happy rate is ${happyPct}%, below the 70% target. Negative sentiment at ${sadAngryPct}%.`});
+  else findings.push({type:'bad',title:'Critical CSAT gap',text:`Only ${happyPct}% Happy rate. Immediate review of onboarding experience required.`});
+  if(nps>=30)findings.push({type:'good',title:'Healthy NPS score',text:`NPS of +${nps} — new hires are becoming brand advocates.`});
+  else if(nps>=0)findings.push({type:'warn',title:'NPS below benchmark',text:`NPS of +${nps} is positive but underperforming. ${passivePct}% passives represent upside.`});
+  else findings.push({type:'bad',title:'Negative NPS — high risk',text:`NPS of ${nps}: more detractors (${detractorPct}%) than promoters (${promoterPct}%). Retention risk elevated.`});
+  if(weakestMs)findings.push({type:weakestMs.happy<50?'bad':'warn',title:`${weakestMs.label} is the weakest milestone`,text:`${weakestMs.happy}% Happy rate — friction detected at this stage. RR: ${weakestMs.rr}%.`});
+  if(topSite&&bottomSite&&topSite.site!==bottomSite.site){const gap=topSite.happy-bottomSite.happy;if(gap>0)findings.push({type:gap>20?'bad':'warn',title:`${gap}pt CSAT gap across sites`,text:`${topSite.site} leads at ${topSite.happy}% vs. ${bottomSite.site} at ${bottomSite.happy}%. Inconsistent delivery detected.`});}
+  if(lowRRSite&&lowRRSite.rr<50)findings.push({type:'warn',title:`Low response rate at ${lowRRSite.site}`,text:`Only ${lowRRSite.rr}% response rate. Insights from this site may be statistically limited.`});
+  document.getElementById('kiFindings').innerHTML=findings.map(f=>`<div class="ki-finding"><div class="ki-finding-dot ${f.type}"></div><div class="ki-finding-body"><strong>${f.title}</strong><span>${f.text}</span></div></div>`).join('');
+
+  // Recommendations
+  const recs=[];let recNum=1;
+  if(rrPct<70)recs.push({cls:'ki-rec-yellow',numCls:'yellow',title:'Improve survey participation rate',text:`Current RR is ${rrPct}%. SMS/email reminders at 48h and 7-day marks, manager nudges, and shorter surveys (3–5 questions) can drive RR to 70%+.`});
+  if(lowRRMs&&lowRRMs.rr<50)recs.push({cls:'ki-rec-coral',numCls:'coral',title:`Fix survey distribution at ${lowRRMs.label}`,text:`${lowRRMs.rr}% RR at this milestone. Validate survey links are sent at the right journey touchpoint and check delivery method.`});
+  if(happyPct<70&&weakestMs)recs.push({cls:'ki-rec-coral',numCls:'coral',title:`Redesign ${weakestMs.label} experience`,text:`${weakestMs.happy}% Happy rate at ${weakestMs.label}. Review content relevance, trainer quality, and environment. Target ≥70%.`});
+  if(passivePct>30)recs.push({cls:'ki-rec-yellow',numCls:'yellow',title:'Convert passives with targeted pulse surveys',text:`${passivePct}% passives on the fence. A 2-question 30-day pulse can surface unmet needs before they shift to detractors.`});
+  if(detractorPct>15)recs.push({cls:'ki-rec-coral',numCls:'coral',title:'Launch detractor recovery program',text:`${detractorPct}% detractor rate. Structured follow-up within 14 days — root cause interviews and closed-loop resolution.`});
+  if(topSite&&bottomSite&&topSite.site!==bottomSite.site&&(topSite.happy-bottomSite.happy)>15)recs.push({cls:'ki-rec-lavender',numCls:'lavender',title:`Replicate ${topSite.site} best practices`,text:`Document what drives ${topSite.site}'s ${topSite.happy}% Happy rate and build a site-enablement playbook for ${bottomSite.site} and underperforming locations.`});
+  if(promoterPct>=40)recs.push({cls:'ki-rec',numCls:'',title:'Activate promoters as internal ambassadors',text:`${promoterPct}% promoters are a talent asset. Buddy/mentor programs and referral incentives amplify their positive experience.`});
+  if(!recs.length)recs.push({cls:'ki-rec',numCls:'',title:'Maintain and monitor performance',text:'Metrics are within healthy ranges. Continue regular survey cadence and monitor month-over-month trends.'});
+  document.getElementById('kiRecs').innerHTML=recs.map(r=>`<div class="ki-rec ${r.cls}"><div class="ki-rec-num ${r.numCls}">${recNum++}</div><div class="ki-rec-body"><strong>${r.title}</strong><span>${r.text}</span></div></div>`).join('');
+
+  // Priority pills
+  const priorities=[];
+  if(rrPct<40||detractorPct>15||happyPct<50)priorities.push({cls:'p1',label:'🔴 Immediate: Participation & Recovery'});
+  if(rrPct<70||passivePct>30||happyPct<70)priorities.push({cls:'p2',label:'🟡 Short-term: RR Improvement & Passive Conversion'});
+  if(topSite&&bottomSite&&topSite.site!==bottomSite.site)priorities.push({cls:'p3',label:'🟢 Ongoing: Site Consistency'});
+  if(promoterPct>=40)priorities.push({cls:'p3',label:'🟢 Opportunity: Promoter Activation'});
+  document.getElementById('kiPriorityRow').innerHTML=priorities.length
+    ?`<span class="ki-priority-label">Action Priority</span>`+priorities.map(p=>`<span class="ki-pill ${p.cls}">${p.label}</span>`).join('')
+    :`<span class="ki-priority-label">No critical priorities detected for current filter</span>`;
+}
+</script>
+</body>
+</html>
