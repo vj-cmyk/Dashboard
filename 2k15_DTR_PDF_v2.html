@@ -824,7 +824,12 @@ footer span{color:var(--fd-indigo);font-weight:700}
   </div>
 
   <!-- ATTENDANCE KPIs -->
-  <div class="sl" id="attSectionLbl" style="display:none">🧑‍💼 Attendance &amp; Absenteeism</div>
+  <div class="sl" id="attSectionLbl" style="display:none">
+    🧑‍💼 Attendance &amp; Absenteeism
+    <span id="attritionNote" style="font-size:10.5px;font-weight:700;color:var(--muted);
+      background:var(--surface);border:1px solid var(--border);padding:2px 9px;border-radius:6px;
+      text-transform:none;letter-spacing:0"></span>
+  </div>
   <div class="kpi-grid" id="attKpiGrid" style="display:none">
     <div class="kpi" style="--ac:var(--fd-indigo)">
       <div class="kpi-ico">📋</div>
@@ -1473,8 +1478,13 @@ function computeAttendance(){
     const nm=emp.name;
     let windowEnd=reportEnd;
     if(emp.status==='ATTRITED'){
-      if(!lastDTRDate[nm]) return; // no DTR history at all -> can't determine window, skip
-      windowEnd=lastDTRDate[nm]<reportEnd?lastDTRDate[nm]:reportEnd;
+      // Use the date recorded on their ATTRITED schedule row as the real
+      // last-employed date — NOT their last actual punch. This ensures
+      // no-show days between their last punch and official departure still
+      // correctly count as absences, rather than being silently excluded.
+      const attritionDate = emp.dateObj || lastDTRDate[nm];
+      if(!attritionDate) return; // no way to determine window at all -> skip
+      windowEnd = attritionDate<reportEnd ? attritionDate : reportEnd;
     } else if(emp.status && emp.status!=='ACTIVE'){
       return; // unknown/other non-active statuses excluded from expected
     }
@@ -1489,7 +1499,8 @@ function computeAttendance(){
       else status='ABSENT';
       const asOf=getScheduleAsOf(nm,dCopy);
       out.push({date:dCopy, dateKey:dateKey(dCopy), name:nm,
-        site:(asOf&&asOf.site)||emp.site, supervisor:(asOf&&asOf.supervisor)||emp.supervisor, status});
+        site:(asOf&&asOf.site)||emp.site, supervisor:(asOf&&asOf.supervisor)||emp.supervisor,
+        status, attrited:emp.status==='ATTRITED'});
     }
   });
   return out;
@@ -1762,6 +1773,10 @@ function renderAttendanceKPIs(a){
   set('kAbsent',   absent.toLocaleString(),   new Set(absentRows.map(x=>x.name)).size+' employees affected');
   set('kOnLeave',  leave.toLocaleString(),    new Set(leaveRows.map(x=>x.name)).size+' employees');
   set('kAbsRate',  absRate.toFixed(1)+'%',    'vs '+presRate.toFixed(1)+'% present');
+
+  const attritedCount = new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
+  const noteEl=document.getElementById('attritionNote');
+  if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period` : '';
   drawAbsRateSparkline(a);
 }
 
@@ -2020,9 +2035,13 @@ function renderAbsPage(){
       const badge = r.status==='ABSENT'
         ? `<span style="color:var(--fd-coral);font-weight:700">🚫 Absent</span>`
         : `<span style="color:var(--fd-lavender);font-weight:700">🌴 On Leave</span>`;
+      const nameCell = r.attrited
+        ? `${r.name} <span style="font-size:9px;font-weight:700;color:#fff;background:var(--muted);
+             padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle">ATTRITED</span>`
+        : r.name;
       return `<tr>
         <td>${dispDate}</td>
-        <td>${r.name}</td>
+        <td>${nameCell}</td>
         <td>${r.site||'—'}</td>
         <td>${r.supervisor||'—'}</td>
         <td>${badge}</td>
@@ -2039,11 +2058,11 @@ function changeAbsPage(p){
 }
 function exportAbs(){
   const data=getAbsFiltered();
-  const h=['Date','Name','Site','Supervisor','Status'];
+  const h=['Date','Name','Site','Supervisor','Status','Employment Status'];
   const rows=data.map(r=>{
     const dt=new Date(r.dateKey);
     return [dt.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}),
-      r.name, r.site||'', r.supervisor||'', r.status];
+      r.name, r.site||'', r.supervisor||'', r.status, r.attrited?'ATTRITED':'ACTIVE'];
   });
   dlCSV([h,...rows],'Absence_Detail_Export.csv');
   showToast('⬇ Absence detail exported');
@@ -2623,7 +2642,10 @@ function renderTsResults(term){
   const q=(term||'').toLowerCase().trim();
   const list=[...ROSTER].sort((a,b)=>(a.displayName||a.name).localeCompare(b.displayName||b.name));
   const filtered=q?list.filter(e=>(e.displayName||e.name).toLowerCase().includes(q)):list;
-  sel.innerHTML=filtered.map(e=>`<option value="${e.name}">${e.displayName||e.name} — ${e.site||'?'}</option>`).join('');
+  sel.innerHTML=filtered.map(e=>{
+    const attritedTag = e.status==='ATTRITED' ? ' — ⚠️ ATTRITED' : '';
+    return `<option value="${e.name}">${e.displayName||e.name} — ${e.site||'?'}${attritedTag}</option>`;
+  }).join('');
 }
 
 /* Determine the semi-monthly pay period (1-15 or 16-end) from the loaded DTR's date range */
@@ -2663,6 +2685,9 @@ function generateTimesheet(){
   if(!empKey){ showToast('⚠️ Select an employee first'); return; }
   const emp=ROSTER.find(e=>e.name===empKey);
   if(!emp){ showToast('❌ Employee not found in roster'); return; }
+  if(emp.status==='ATTRITED'){
+    showToast('⚠️ '+(emp.displayName||emp.name)+' is marked ATTRITED — generating anyway');
+  }
 
   // Respect the active filters (Site/Supervisor/Cutoff/Month/Employee/Day) —
   // this is what determines which pay period the PDF is generated for.
