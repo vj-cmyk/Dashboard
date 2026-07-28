@@ -1478,13 +1478,15 @@ function computeAttendance(){
     const nm=emp.name;
     let windowEnd=reportEnd;
     if(emp.status==='ATTRITED'){
-      // Use the date recorded on their ATTRITED schedule row as the real
-      // last-employed date — NOT their last actual punch. This ensures
-      // no-show days between their last punch and official departure still
-      // correctly count as absences, rather than being silently excluded.
+      // The date on their ATTRITED schedule row is treated as the effective
+      // date of separation — they are NO LONGER expected starting that date
+      // (exclusive), not still-expected through it (inclusive). So their real
+      // expected window ends the day BEFORE their recorded attrition date.
       const attritionDate = emp.dateObj || lastDTRDate[nm];
       if(!attritionDate) return; // no way to determine window at all -> skip
-      windowEnd = attritionDate<reportEnd ? attritionDate : reportEnd;
+      const lastExpectedDay = new Date(attritionDate);
+      lastExpectedDay.setDate(lastExpectedDay.getDate()-1);
+      windowEnd = lastExpectedDay<reportEnd ? lastExpectedDay : reportEnd;
     } else if(emp.status && emp.status!=='ACTIVE'){
       return; // unknown/other non-active statuses excluded from expected
     }
