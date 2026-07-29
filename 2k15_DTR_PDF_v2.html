@@ -1298,6 +1298,7 @@ function normalizeRows(rows){
     // PDF-only fields: the actual hours/days worked, distinct from the ₱ monetary
     // fields above (which power the dashboard KPI tiles and are correct as-is)
     const otHrsPdf     = gn(r,['Base Pay OT','Base Pay OT (Hrs)']);
+    const hrsRendered  = gn(r,['Hrs Rendered','Hrs  Rendered']);
     const regHolDaysPdf = gn(r,['Regular Hol (Day)','Regular Hol Day']);
     const spcHolDaysPdf = gn(r,['Special Hol (Day)','Special Hol Day']);
     // New KPI tiles: real hours worked as Reg/Special Holiday OT (distinct from
@@ -1353,7 +1354,7 @@ function normalizeRows(rows){
       minsLate, minsEarly, isTardy, isUT,
       base, otHrs, ndHrs, rdDays, rdHrs, restOT,
       regHol, holDays, regHolOT, spcHolD, spcHolH,
-      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs,
+      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered,
       totalBilled, variance, issues, status
     };
   }).filter(r=>r.name);
@@ -2754,7 +2755,7 @@ function generateTimesheet(){
     if(dtrRow){
       timeIn = dtrRow.timeIN||'';
       timeOut = dtrRow.timeOut||'';
-      if(!isWeekend && dtrRow.timeIN && dtrRow.timeOut) regHrs='8.0';
+      if(!isWeekend && dtrRow.timeIN && dtrRow.timeOut) regHrs=dtrRow.hrsRendered.toFixed(2);
       if(dtrRow.otHrsPdf>0) apprOT=dtrRow.otHrsPdf.toFixed(1);
       if(dtrRow.rdotHrsPdf>0) rdot=dtrRow.rdotHrsPdf.toFixed(1);
       const holDaysVal = dtrRow.regHolDaysPdf>0?dtrRow.regHolDaysPdf:(dtrRow.spcHolDaysPdf>0?dtrRow.spcHolDaysPdf:0);
