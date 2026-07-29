@@ -797,29 +797,17 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="kpi-val" id="kHolS">—</div>
       <div class="kpi-sub" id="kHolSSub">—</div>
     </div>
-    <div class="kpi" style="--ac:var(--fd-mint)">
-      <div class="kpi-ico">👥</div>
-      <div class="kpi-lbl">Headcount</div>
-      <div class="kpi-val" id="kHC">—</div>
-      <div class="kpi-sub" id="kHCSub">—</div>
+    <div class="kpi" style="--ac:#f97316">
+      <div class="kpi-ico">🎆</div>
+      <div class="kpi-lbl">Reg Hol OT (Hrs)</div>
+      <div class="kpi-val" id="kRegHolOTHrs">—</div>
+      <div class="kpi-sub" id="kRegHolOTHrsSub">—</div>
     </div>
-    <div class="kpi" style="--ac:var(--fd-lemon)">
-      <div class="kpi-ico">⏱️</div>
-      <div class="kpi-lbl">Tardy</div>
-      <div class="kpi-val" id="kTardy">—</div>
-      <div class="kpi-sub" id="kTardySub">—</div>
-    </div>
-    <div class="kpi" style="--ac:var(--fd-lavender)">
-      <div class="kpi-ico">🚪</div>
-      <div class="kpi-lbl">Undertime</div>
-      <div class="kpi-val" id="kUT">—</div>
-      <div class="kpi-sub" id="kUTSub">—</div>
-    </div>
-    <div class="kpi" style="--ac:var(--fd-coral)">
-      <div class="kpi-ico">⚠️</div>
-      <div class="kpi-lbl">Total Irregularities</div>
-      <div class="kpi-val" id="kIrr">—</div>
-      <div class="kpi-sub" id="kIrrSub">—</div>
+    <div class="kpi" style="--ac:#06b6d4">
+      <div class="kpi-ico">🌟</div>
+      <div class="kpi-lbl">Spcl Hol OT (Hrs)</div>
+      <div class="kpi-val" id="kSpcHolOTHrs">—</div>
+      <div class="kpi-sub" id="kSpcHolOTHrsSub">—</div>
     </div>
   </div>
 
@@ -861,6 +849,30 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="kpi-val" id="kAbsRate">—</div>
       <div class="kpi-sub" id="kAbsRateSub">—</div>
       <canvas id="kAbsRateSpark" class="kpi-spark"></canvas>
+    </div>
+    <div class="kpi" style="--ac:var(--fd-mint)">
+      <div class="kpi-ico">👥</div>
+      <div class="kpi-lbl">Headcount</div>
+      <div class="kpi-val" id="kHC">—</div>
+      <div class="kpi-sub" id="kHCSub">—</div>
+    </div>
+    <div class="kpi" style="--ac:var(--fd-lemon)">
+      <div class="kpi-ico">⏱️</div>
+      <div class="kpi-lbl">Tardy</div>
+      <div class="kpi-val" id="kTardy">—</div>
+      <div class="kpi-sub" id="kTardySub">—</div>
+    </div>
+    <div class="kpi" style="--ac:var(--fd-lavender)">
+      <div class="kpi-ico">🚪</div>
+      <div class="kpi-lbl">Undertime</div>
+      <div class="kpi-val" id="kUT">—</div>
+      <div class="kpi-sub" id="kUTSub">—</div>
+    </div>
+    <div class="kpi" style="--ac:var(--fd-coral)">
+      <div class="kpi-ico">⚠️</div>
+      <div class="kpi-lbl">Total Irregularities</div>
+      <div class="kpi-val" id="kIrr">—</div>
+      <div class="kpi-sub" id="kIrrSub">—</div>
     </div>
   </div>
 
@@ -1288,6 +1300,10 @@ function normalizeRows(rows){
     const otHrsPdf     = gn(r,['Base Pay OT','Base Pay OT (Hrs)']);
     const regHolDaysPdf = gn(r,['Regular Hol (Day)','Regular Hol Day']);
     const spcHolDaysPdf = gn(r,['Special Hol (Day)','Special Hol Day']);
+    // New KPI tiles: real hours worked as Reg/Special Holiday OT (distinct from
+    // the monetary 'Reg Hol OT (Hours)' / 'Special Hol (Hours)' fields above)
+    const regHolOTHrs = gn(r,['Reg ular Hol OT (Hours)','Regular Hol OT (Hours)','Reg Hol OT (Hours)']);
+    const spcHolOTHrs = gn(r,['Special Hol (Hours)','Special Hol Hours']);
 
     /* ── TARDY & UNDERTIME DETECTION ── */
     const shiftSMins = parseTimeMins(shiftS);
@@ -1337,7 +1353,7 @@ function normalizeRows(rows){
       minsLate, minsEarly, isTardy, isUT,
       base, otHrs, ndHrs, rdDays, rdHrs, restOT,
       regHol, holDays, regHolOT, spcHolD, spcHolH,
-      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf,
+      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs,
       totalBilled, variance, issues, status
     };
   }).filter(r=>r.name);
@@ -1733,6 +1749,8 @@ function renderKPIs(d){
   set('kND',         '₱'+fmtN(sumF(d,'ndHrs')),   d.filter(r=>r.ndHrs>0).length+' w/ ND');
   set('kHolR',       '₱'+fmtN(sumF(d,'regHol')),       d.filter(r=>r.regHol>0).length+' records');
   set('kHolS',       '₱'+fmtN(sumF(d,'spcHolD')),      d.filter(r=>r.spcHolD>0).length+' records');
+  set('kRegHolOTHrs', '₱'+fmtN(sumF(d,'regHolOTHrs')), d.filter(r=>r.regHolOTHrs>0).length+' records');
+  set('kSpcHolOTHrs', '₱'+fmtN(sumF(d,'spcHolOTHrs')), d.filter(r=>r.spcHolOTHrs>0).length+' records');
   set('kHC',         hc.toLocaleString(),           'Unique employees');
   set('kTardy',      tardyCnt.toLocaleString(),     'avg '+avgLate+' mins late');
   set('kUT',         utCnt.toLocaleString(),        'avg '+avgEarly+' mins early');
