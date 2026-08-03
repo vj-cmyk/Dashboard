@@ -2767,6 +2767,23 @@ function generateTimesheet(){
     rows.push([dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
   }
 
+  // Totals row — sums each numeric column, skipping non-numeric entries like "Leave"
+  const sumCol=(idx)=>{
+    let total=0;
+    rows.forEach(r=>{
+      const v=parseFloat(r[idx]);
+      if(!isNaN(v)) total+=v;
+    });
+    return total;
+  };
+  const totalRegHrs = sumCol(4);
+  const totalApprOT = sumCol(5);
+  const totalRdot   = sumCol(6);
+  const totalHoliday= sumCol(7);
+  const totalsRow=['TOTAL','','','',
+    totalRegHrs.toFixed(2), totalApprOT?totalApprOT.toFixed(1):'',
+    totalRdot?totalRdot.toFixed(1):'', totalHoliday?totalHoliday.toFixed(1):''];
+
   const MONTH_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const periodLabel = MONTH_ABBR[period.start.getMonth()]+' '+period.start.getDate()+
     ' to '+period.end.getDate()+', '+period.end.getFullYear();
@@ -2811,9 +2828,11 @@ function generateTimesheet(){
     margin:{left:margin,right:margin},
     head:[['DATE','SHIFT','IN','OUT','REGULAR HRS','APPROVED OT','RDOT','HOLIDAY']],
     body: rows,
+    foot: [totalsRow],
     theme:'grid',
     styles:{fontSize:8.5, cellPadding:4, textColor:[0,0,0], lineColor:[0,0,0], lineWidth:0.5},
     headStyles:{textColor:[0,0,204], fontStyle:'bold', fillColor:[255,255,255], halign:'center'},
+    footStyles:{textColor:[0,0,0], fontStyle:'bold', fillColor:[255,255,255], halign:'center', lineWidth:0.5, lineColor:[0,0,0]},
     columnStyles:{
       0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'},
       4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}
