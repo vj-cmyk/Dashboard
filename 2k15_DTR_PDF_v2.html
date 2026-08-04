@@ -513,7 +513,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--fd-midnight);c
 .kpi::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--ac,var(--fd-indigo))}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:7px}
 .kpi-val{font-size:26px;font-weight:800;color:var(--txt);line-height:1;margin-bottom:4px;
-  font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  font-variant-numeric:tabular-nums;letter-spacing:-.5px;overflow-wrap:break-word}
 .kpi-sub{font-size:10px;color:var(--muted)}
 .kpi-ico{position:absolute;right:13px;top:13px;font-size:20px;opacity:.28}
 
@@ -1484,11 +1484,27 @@ function computeAttendance(){
     if(!lastDTRDate[nm] || r.dateObj>lastDTRDate[nm]) lastDTRDate[nm]=r.dateObj;
   });
 
-  // Observed reporting window = min/max date across DTR
-  const allDates=RAW.map(r=>r.dateObj).filter(Boolean);
+  // Observed reporting window = min/max date across DTR — guarded against a
+  // single corrupted date (e.g. a leaked Excel serial) blowing this range out
+  // to years/decades, which would otherwise freeze the browser in the loop below.
+  let allDates=RAW.map(r=>r.dateObj).filter(Boolean);
   if(!allDates.length) return [];
+  if(allDates.length>2){
+    const sorted=[...allDates].sort((a,b)=>a-b);
+    const median=sorted[Math.floor(sorted.length/2)];
+    const sane=allDates.filter(d=>Math.abs(d-median)<=120*86400000); // within ~4 months of median
+    if(sane.length<allDates.length){
+      showToast('⚠️ '+(allDates.length-sane.length)+' row(s) had an invalid date and were excluded from the reporting window');
+    }
+    if(sane.length) allDates=sane;
+  }
   const reportStart=new Date(Math.min(...allDates));
   const reportEnd=new Date(Math.max(...allDates));
+  const MAX_LOOP_DAYS=730; // hard safety cap (2 years) — never trust an unbounded date range
+  if((reportEnd-reportStart)/86400000>MAX_LOOP_DAYS){
+    showToast('❌ Date range too large ('+Math.round((reportEnd-reportStart)/86400000)+' days) — check for a corrupted date in your file');
+    return [];
+  }
 
   const out=[];
   ROSTER.forEach(emp=>{
@@ -1507,7 +1523,9 @@ function computeAttendance(){
     } else if(emp.status && emp.status!=='ACTIVE'){
       return; // unknown/other non-active statuses excluded from expected
     }
+    let _guard=0;
     for(let d=new Date(reportStart); d<=windowEnd; d.setDate(d.getDate()+1)){
+      if(++_guard>MAX_LOOP_DAYS){ console.warn('Attendance loop safety cap hit for', nm); break; }
       const dow=d.getDay(); // 0=Sun,6=Sat
       if(dow===0||dow===6) continue; // Mon-Fri only
       const dCopy=new Date(d);
@@ -1719,6 +1737,9 @@ function peso(n){
 function fmtN(n){
   return n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
+function fmtWhole(n){
+  return Math.round(n).toLocaleString('en-PH');
+}
 function fmtShort(n){
   if(n>=1e6) return '₱'+(n/1e6).toFixed(1)+'M';
   if(n>=1e3) return '₱'+(n/1e3).toFixed(0)+'K';
@@ -1743,8 +1764,8 @@ function renderKPIs(d){
     document.getElementById(id).textContent=v;
     if(sub) document.getElementById(id+'Sub').textContent=sub;
   };
-  set('kTotalBilled',peso(sumF(d,'totalBilled')),d.length.toLocaleString()+' record-days');
-  set('kBase',       peso(sumF(d,'base')),        d.length.toLocaleString()+' record-days');
+  set('kTotalBilled','₱'+fmtWhole(sumF(d,'totalBilled')),d.length.toLocaleString()+' record-days');
+  set('kBase',       '₱'+fmtWhole(sumF(d,'base')),        d.length.toLocaleString()+' record-days');
   set('kOT',         '₱'+fmtN(sumF(d,'otHrs')),   d.filter(r=>r.otHrs>0).length+' w/ OT');
   set('kRdot',       '₱'+fmtN(sumF(d,'restOT')),  d.filter(r=>r.restOT>0).length+' rest OT');
   set('kND',         '₱'+fmtN(sumF(d,'ndHrs')),   d.filter(r=>r.ndHrs>0).length+' w/ ND');
@@ -1971,7 +1992,7 @@ function renderAbsSupChart(a){
         tooltip:{
           backgroundColor:'#12123a',borderColor:CLR.lavender,borderWidth:1,
           callbacks:{
-            title:ctx=>sups[ctx[0].dataIndex],
+            title:ctx=>ctx.length?sups[ctx[0].dataIndex]:'',
             label:ctx=>{
               const i=ctx.dataIndex;
               return ` ${counts[i]} absences (${rates[i].toFixed(1)}%) · click to filter`;
@@ -2127,7 +2148,13 @@ function renderTrendChart(a){
           backgroundColor:'#12123a',borderColor:CLR.indigo,borderWidth:1,
           mode:'index',intersect:false
         },
-        datalabels:{display:false}
+        datalabels:{
+          display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,
+          color:'#fff',font:{size:9,weight:'bold'},
+          textStrokeColor:'rgba(20,24,45,.5)',textStrokeWidth:2,
+          formatter:v=>v,
+          anchor:'center',align:'center'
+        }
       },
       scales:{
         x:{ticks:{color:CLR.txt,font:{size:8},maxRotation:45,minRotation:45},grid:{display:false},stacked:true},
@@ -2182,10 +2209,10 @@ function renderPie(){
         },
         datalabels:{
           display:ctx=>ctx.parsed>0,
-          color:'#fff',font:{size:11,weight:'bold'},
+          color:'#fff',font:{size:9.5,weight:'bold'},
           textStrokeColor:'rgba(20,24,45,.55)',textStrokeWidth:3,
           textShadowBlur:4,textShadowColor:'rgba(0,0,0,.5)',
-          formatter:(v)=>total>0?((v/total)*100).toFixed(1)+'%':'',
+          formatter:(v)=>total>0?fmtShort(v)+'\n('+((v/total)*100).toFixed(1)+'%)':'',
           anchor:'center',align:'center'
         }
       }
@@ -2230,7 +2257,7 @@ function renderFunnel(){
         <div class="funnel-bar-wrap">
           <div class="funnel-bar" style="height:${rowH}px;width:${Math.max(pct,8)}%;background:${col}"
             title="${s[0]}: ₱${fmtN(s[1])} · ${hc} employees">
-            <span class="funnel-val" style="font-size:${valFont}">${fmtShort(s[1])}</span>
+            <span class="funnel-val" style="font-size:${valFont}">₱${fmtWhole(s[1])}</span>
           </div>
         </div>
         <div class="funnel-count" style="font-size:${cntFont}">${hc} emp</div>
@@ -2317,9 +2344,10 @@ function renderSupChart(){
           backgroundColor:'#12123a',borderColor:CLR.lavender,borderWidth:1,
           titleColor:'#fff',bodyColor:CLR.txt,
           callbacks:{
-            title:ctx=>supSorted[ctx[0].dataIndex].name,
+            title:ctx=>ctx.length?supSorted[ctx[0].dataIndex].name:'',
             label:ctx=>{
-              const s=supSorted[ctx[0].dataIndex];
+              const s=supSorted[ctx.dataIndex];
+              if(!s) return '';
               const team=FILTERED.filter(r=>r.supervisor===s.name);
               const hc=new Set(team.map(r=>r.name)).size;
               const tardyCnt=team.filter(r=>r.isTardy).length;
@@ -2337,7 +2365,7 @@ function renderSupChart(){
           display:true,anchor:'end',align:'right',
           color:supSorted.map(s=>s.name===activeSup?CLR.gold:'#1c2033'),
           font:{size:10,weight:'bold'},padding:{left:4},
-          formatter:v=>fmtShort(v)
+          formatter:v=>'₱'+fmtWhole(v)
         }
       },
       scales:{
@@ -2389,10 +2417,10 @@ function renderIrrChart(){
         },
         datalabels:{
           display:ctx=>ctx.parsed>0,color:'#fff',
-          font:{size:11,weight:'bold'},
+          font:{size:9.5,weight:'bold'},
           textStrokeColor:'rgba(20,24,45,.55)',textStrokeWidth:3,
           textShadowBlur:4,textShadowColor:'rgba(0,0,0,.5)',
-          formatter:(v)=>total>0?((v/total)*100).toFixed(0)+'%':'',
+          formatter:(v)=>total>0?v+'\n('+((v/total)*100).toFixed(0)+'%)':'',
           anchor:'center',align:'center'
         }
       }
