@@ -2833,7 +2833,6 @@ function generateTimesheet(){
     } else if(onLeave && !isWeekend){
       regHrs='Leave';
     }
-    if(holiday) shift='';
     rows.push([dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
   }
 
