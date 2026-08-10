@@ -1341,7 +1341,7 @@ function normalizeRows(rows){
     else if(isUT)            issues.push('UNDERTIME');
     if(base===0 && totalBilled===0 && timeIN && timeOut) issues.push('ZERO BASE');
     if(otHrs>100)            issues.push('HIGH OT');
-    if(rdDays>0&&restOT>0)  issues.push('REST DAY OT');
+    if(restOT>0)  issues.push('REST DAY OT');
     if(ndHrs>40)             issues.push('HIGH NIGHT DIFF');
     if(otHrs>0&&base<FULL_BASE-0.01) issues.push('OT+UNDERTIME WAGE');
 
