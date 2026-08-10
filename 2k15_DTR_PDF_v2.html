@@ -1304,6 +1304,7 @@ function normalizeRows(rows){
     // fields above (which power the dashboard KPI tiles and are correct as-is)
     const otHrsPdf     = gn(r,['Base Pay OT','Base Pay OT (Hrs)']);
     const hrsRendered  = gn(r,['Regular Hours','Regular  Hours']);
+    const holidayTypePdf = gc(r,['Holiday']);
     const regHolDaysPdf = gn(r,['Regular Hol (Day)','Regular Hol Day']);
     const spcHolDaysPdf = gn(r,['Special Hol (Day)','Special Hol Day']);
     // New KPI tiles: real hours worked as Reg/Special Holiday OT (distinct from
@@ -1359,7 +1360,7 @@ function normalizeRows(rows){
       minsLate, minsEarly, isTardy, isUT,
       base, otHrs, ndHrs, rdDays, rdHrs, restOT,
       regHol, holDays, regHolOT, spcHolD, spcHolH,
-      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered,
+      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered, holidayTypePdf,
       totalBilled, variance, issues, status
     };
   }).filter(r=>r.name);
@@ -2832,6 +2833,9 @@ function generateTimesheet(){
       if(holVal>0) holiday=holVal.toFixed(1);
     } else if(onLeave && !isWeekend){
       regHrs='Leave';
+    }
+    if(dtrRow && dtrRow.holidayTypePdf && dtrRow.holidayTypePdf.toLowerCase().includes('regular')){
+      shift=''; // Regular Holiday — no shift shown, per Column H
     }
     rows.push([dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
   }
