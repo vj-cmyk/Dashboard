@@ -1160,6 +1160,7 @@ const CLR = {
 /* ═══ STATE ═══ */
 let RAW=[], FILTERED=[];
 let ROSTER=[], LEAVE_SET=new Set(), ATTEND=[], ATTEND_FILTERED=[];
+let UNROSTERED_EMPLOYEES=[];
 let hasAttendanceData=false;
 let DTR_DISP=[], IRR_DISP=[], ABS_DISP=[];
 let dtrPage=1, irrPage=1, absPage=1;
@@ -1216,6 +1217,7 @@ function processFile(file){
       }
 
       hasAttendanceData = ROSTER.length>0;
+      UNROSTERED_EMPLOYEES=[];
       ATTEND = hasAttendanceData ? computeAttendance() : [];
       ATTEND_FILTERED = [...ATTEND];
       toggleAttendanceUI(hasAttendanceData);
@@ -1227,7 +1229,10 @@ function processFile(file){
       document.getElementById('recBadge').textContent=RAW.length.toLocaleString()+' Records';
       document.getElementById('drillHint').classList.add('on');
       const attNote = hasAttendanceData ? ' + attendance tracking' : '';
-      showToast('✅ '+RAW.length.toLocaleString()+' records loaded'+attNote+'!');
+      const unrosterNote = UNROSTERED_EMPLOYEES.length
+        ? ' ⚠️ '+UNROSTERED_EMPLOYEES.length+' employee(s) missing from SCHEDULE tab (counted as Present only, no absence tracking)'
+        : '';
+      showToast('✅ '+RAW.length.toLocaleString()+' records loaded'+attNote+'!'+unrosterNote);
     }catch(err){showToast('❌ '+err.message);console.error(err);}
   };
   reader.readAsBinaryString(file);
@@ -1298,7 +1303,8 @@ function normalizeRows(rows){
     // PDF-only fields: the actual hours/days worked, distinct from the ₱ monetary
     // fields above (which power the dashboard KPI tiles and are correct as-is)
     const otHrsPdf     = gn(r,['Base Pay OT','Base Pay OT (Hrs)']);
-    const hrsRendered  = gn(r,['Hrs Rendered','Hrs  Rendered']);
+    const hrsRendered  = gn(r,['Regular Hours','Regular  Hours']);
+    const holidayTypePdf = gc(r,['Holiday']);
     const regHolDaysPdf = gn(r,['Regular Hol (Day)','Regular Hol Day']);
     const spcHolDaysPdf = gn(r,['Special Hol (Day)','Special Hol Day']);
     // New KPI tiles: real hours worked as Reg/Special Holiday OT (distinct from
@@ -1354,7 +1360,7 @@ function normalizeRows(rows){
       minsLate, minsEarly, isTardy, isUT,
       base, otHrs, ndHrs, rdDays, rdHrs, restOT,
       regHol, holDays, regHolOT, spcHolD, spcHolH,
-      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered,
+      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered, holidayTypePdf,
       totalBilled, variance, issues, status
     };
   }).filter(r=>r.name);
@@ -1419,7 +1425,9 @@ function buildRoster(rows){
     const scheduleOut = fixTimeStr(gc(r,['Schedule OUT','Schedule Out']));
     const subUnit = gc(r,['SUB-UNIT','Sub-Unit','Sub Unit']);
     const tl = gc(r,['TL','Team Leader']);
-    const rec={name,displayName,dateObj,site,supervisor,status,email,scheduleIn,scheduleOut,subUnit,tl};
+    const startDate = parseDate(gc(r,['START DATE','Start Date']));
+    const empId = gc(r,['EMPLOYEE ID','Employee ID']);
+    const rec={name,displayName,dateObj,site,supervisor,status,email,scheduleIn,scheduleOut,subUnit,tl,startDate,empId};
     if(!byName[name]) byName[name]=[];
     byName[name].push(rec);
   });
@@ -1509,6 +1517,13 @@ function computeAttendance(){
   const out=[];
   ROSTER.forEach(emp=>{
     const nm=emp.name;
+    let windowStart=reportStart;
+    if(emp.startDate && emp.startDate>reportStart){
+      // Not expected before their actual employment start date — this
+      // prevents new hires from being wrongly flagged absent for days
+      // before they even joined.
+      windowStart=emp.startDate;
+    }
     let windowEnd=reportEnd;
     if(emp.status==='ATTRITED'){
       // The date on their ATTRITED schedule row is treated as the effective
@@ -1524,14 +1539,20 @@ function computeAttendance(){
       return; // unknown/other non-active statuses excluded from expected
     }
     let _guard=0;
-    for(let d=new Date(reportStart); d<=windowEnd; d.setDate(d.getDate()+1)){
+    for(let d=new Date(reportStart); d<=reportEnd; d.setDate(d.getDate()+1)){
       if(++_guard>MAX_LOOP_DAYS){ console.warn('Attendance loop safety cap hit for', nm); break; }
       const dow=d.getDay(); // 0=Sun,6=Sat
       if(dow===0||dow===6) continue; // Mon-Fri only
       const dCopy=new Date(d);
       const key=nm+'|'+dateKey(dCopy);
+      const hasPunch=presentSet.has(key);
+      // A real recorded punch always counts as Present, even outside the
+      // expected window (before start date or after attrition boundary) —
+      // the window only governs whether an ABSENCE gets flagged, never
+      // whether a genuine attendance record gets suppressed.
+      if(!hasPunch && (d>windowEnd || d<windowStart)) continue;
       let status;
-      if(presentSet.has(key)) status='PRESENT';
+      if(hasPunch) status='PRESENT';
       else if(LEAVE_SET.has(key)) status='LEAVE';
       else status='ABSENT';
       const asOf=getScheduleAsOf(nm,dCopy);
@@ -1540,6 +1561,27 @@ function computeAttendance(){
         status, attrited:emp.status==='ATTRITED'});
     }
   });
+
+  // Employees who have real DTR punches but no SCHEDULE tab entry at all —
+  // we don't know their expected work pattern, so we can't safely generate
+  // absence/leave records for them, but their genuine punches should still
+  // count as Present (using Site/Supervisor from their own DTR rows) rather
+  // than being silently invisible to headcount and the Trend chart.
+  const rosterNames=new Set(ROSTER.map(e=>e.name));
+  const unrostered=new Set();
+  RAW.forEach(r=>{
+    if(!r.dateObj) return;
+    const nm=normName(r.name);
+    if(rosterNames.has(nm)) return;
+    unrostered.add(nm);
+    const dow=r.dateObj.getDay();
+    if(dow===0||dow===6) return; // Mon-Fri only, consistent with the rest of the engine
+    out.push({date:r.dateObj, dateKey:dateKey(r.dateObj), name:nm,
+      site:r.site||'', supervisor:r.supervisor||'',
+      status:'PRESENT', attrited:false, unrostered:true});
+  });
+  if(unrostered.size) UNROSTERED_EMPLOYEES=[...unrostered];
+
   return out;
 }
 
@@ -1766,13 +1808,13 @@ function renderKPIs(d){
   };
   set('kTotalBilled','₱'+fmtWhole(sumF(d,'totalBilled')),d.length.toLocaleString()+' record-days');
   set('kBase',       '₱'+fmtWhole(sumF(d,'base')),        d.length.toLocaleString()+' record-days');
-  set('kOT',         '₱'+fmtN(sumF(d,'otHrs')),   d.filter(r=>r.otHrs>0).length+' w/ OT');
-  set('kRdot',       '₱'+fmtN(sumF(d,'restOT')),  d.filter(r=>r.restOT>0).length+' rest OT');
-  set('kND',         '₱'+fmtN(sumF(d,'ndHrs')),   d.filter(r=>r.ndHrs>0).length+' w/ ND');
-  set('kHolR',       '₱'+fmtN(sumF(d,'regHol')),       d.filter(r=>r.regHol>0).length+' records');
-  set('kHolS',       '₱'+fmtN(sumF(d,'spcHolD')),      d.filter(r=>r.spcHolD>0).length+' records');
-  set('kRegHolOTHrs', '₱'+fmtN(sumF(d,'regHolOTHrs')), d.filter(r=>r.regHolOTHrs>0).length+' records');
-  set('kSpcHolOTHrs', '₱'+fmtN(sumF(d,'spcHolOTHrs')), d.filter(r=>r.spcHolOTHrs>0).length+' records');
+  set('kOT',         '₱'+fmtWhole(sumF(d,'otHrs')),   d.filter(r=>r.otHrs>0).length+' w/ OT');
+  set('kRdot',       '₱'+fmtWhole(sumF(d,'restOT')),  d.filter(r=>r.restOT>0).length+' rest OT');
+  set('kND',         '₱'+fmtWhole(sumF(d,'ndHrs')),   d.filter(r=>r.ndHrs>0).length+' w/ ND');
+  set('kHolR',       '₱'+fmtWhole(sumF(d,'regHol')),       d.filter(r=>r.regHol>0).length+' records');
+  set('kHolS',       '₱'+fmtWhole(sumF(d,'spcHolD')),      d.filter(r=>r.spcHolD>0).length+' records');
+  set('kRegHolOTHrs', '₱'+fmtWhole(sumF(d,'regHolOTHrs')), d.filter(r=>r.regHolOTHrs>0).length+' records');
+  set('kSpcHolOTHrs', '₱'+fmtWhole(sumF(d,'spcHolOTHrs')), d.filter(r=>r.spcHolOTHrs>0).length+' records');
   set('kHC',         hc.toLocaleString(),           'Unique employees');
   set('kTardy',      tardyCnt.toLocaleString(),     'avg '+avgLate+' mins late');
   set('kUT',         utCnt.toLocaleString(),        'avg '+avgEarly+' mins early');
@@ -2783,7 +2825,7 @@ function generateTimesheet(){
     if(dtrRow){
       timeIn = dtrRow.timeIN||'';
       timeOut = dtrRow.timeOut||'';
-      if(!isWeekend && dtrRow.timeIN && dtrRow.timeOut) regHrs=dtrRow.hrsRendered.toFixed(2);
+      if(!isWeekend && dtrRow.timeIN && dtrRow.timeOut && dtrRow.hrsRendered>0) regHrs=dtrRow.hrsRendered.toFixed(2);
       if(dtrRow.otHrsPdf>0) apprOT=dtrRow.otHrsPdf.toFixed(1);
       if(dtrRow.rdotHrsPdf>0) rdot=dtrRow.rdotHrsPdf.toFixed(1);
       const holDaysVal = dtrRow.regHolDaysPdf>0?dtrRow.regHolDaysPdf:(dtrRow.spcHolDaysPdf>0?dtrRow.spcHolDaysPdf:0);
@@ -2791,6 +2833,9 @@ function generateTimesheet(){
       if(holVal>0) holiday=holVal.toFixed(1);
     } else if(onLeave && !isWeekend){
       regHrs='Leave';
+    }
+    if(dtrRow && dtrRow.holidayTypePdf && dtrRow.holidayTypePdf.toLowerCase().includes('regular')){
+      shift=''; // Regular Holiday — no shift shown, per Column H
     }
     rows.push([dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
   }
