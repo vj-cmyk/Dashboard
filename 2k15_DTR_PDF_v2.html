@@ -513,7 +513,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--fd-midnight);c
 .kpi::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--ac,var(--fd-indigo))}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:7px}
 .kpi-val{font-size:26px;font-weight:800;color:var(--txt);line-height:1;margin-bottom:4px;
-  font-variant-numeric:tabular-nums;letter-spacing:-.5px;overflow-wrap:break-word}
+  font-variant-numeric:tabular-nums;letter-spacing:-.5px;white-space:nowrap;overflow:hidden}
 .kpi-sub{font-size:10px;color:var(--muted)}
 .kpi-ico{position:absolute;right:13px;top:13px;font-size:20px;opacity:.28}
 
@@ -1160,6 +1160,7 @@ const CLR = {
 /* ═══ STATE ═══ */
 let RAW=[], FILTERED=[];
 let ROSTER=[], LEAVE_SET=new Set(), ATTEND=[], ATTEND_FILTERED=[];
+let REPORT_START=null, REPORT_END=null;
 let UNROSTERED_EMPLOYEES=[];
 let hasAttendanceData=false;
 let DTR_DISP=[], IRR_DISP=[], ABS_DISP=[];
@@ -1508,6 +1509,7 @@ function computeAttendance(){
   }
   const reportStart=new Date(Math.min(...allDates));
   const reportEnd=new Date(Math.max(...allDates));
+  REPORT_START=reportStart; REPORT_END=reportEnd;
   const MAX_LOOP_DAYS=730; // hard safety cap (2 years) — never trust an unbounded date range
   if((reportEnd-reportStart)/86400000>MAX_LOOP_DAYS){
     showToast('❌ Date range too large ('+Math.round((reportEnd-reportStart)/86400000)+' days) — check for a corrupted date in your file');
@@ -1782,6 +1784,20 @@ function fmtN(n){
 function fmtWhole(n){
   return Math.round(n).toLocaleString('en-PH');
 }
+/* Shrinks a KPI value's font size just enough to fit on one line within its
+   card, instead of letting long numbers (e.g. 7-digit peso totals) wrap
+   mid-digit. Resets to the CSS default first, then steps down if needed. */
+function autoFitKpiVal(el){
+  if(!el) return;
+  el.style.fontSize='';
+  const maxSize=parseFloat(getComputedStyle(el).fontSize);
+  let size=maxSize;
+  const minSize=14;
+  while(el.scrollWidth>el.clientWidth && size>minSize){
+    size-=1;
+    el.style.fontSize=size+'px';
+  }
+}
 function fmtShort(n){
   if(n>=1e6) return '₱'+(n/1e6).toFixed(1)+'M';
   if(n>=1e3) return '₱'+(n/1e3).toFixed(0)+'K';
@@ -1803,7 +1819,9 @@ function renderKPIs(d){
   const avgEarly=utCnt>0?Math.round(d.filter(r=>r.isUT).reduce((a,r)=>a+r.minsEarly,0)/utCnt):0;
 
   const set=(id,v,sub)=>{
-    document.getElementById(id).textContent=v;
+    const el=document.getElementById(id);
+    el.textContent=v;
+    autoFitKpiVal(el);
     if(sub) document.getElementById(id+'Sub').textContent=sub;
   };
   set('kTotalBilled','₱'+fmtWhole(sumF(d,'totalBilled')),d.length.toLocaleString()+' record-days');
@@ -1848,7 +1866,7 @@ function renderAttendanceKPIs(a){
 
   const set=(id,v,sub)=>{
     const el=document.getElementById(id);
-    if(el) el.textContent=v;
+    if(el){ el.textContent=v; autoFitKpiVal(el); }
     const subEl=document.getElementById(id+'Sub');
     if(subEl) subEl.textContent=sub;
   };
@@ -1858,7 +1876,9 @@ function renderAttendanceKPIs(a){
   set('kOnLeave',  leave.toLocaleString(),    new Set(leaveRows.map(x=>x.name)).size+' employees');
   set('kAbsRate',  absRate.toFixed(1)+'%',    'vs '+presRate.toFixed(1)+'% present');
 
-  const attritedCount = new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
+  const attritedCount = REPORT_START && REPORT_END
+    ? ROSTER.filter(e=>e.status==='ATTRITED' && e.dateObj && e.dateObj>=REPORT_START && e.dateObj<=REPORT_END).length
+    : new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
   const noteEl=document.getElementById('attritionNote');
   if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period` : '';
   drawAbsRateSparkline(a);
