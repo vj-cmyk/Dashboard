@@ -2823,11 +2823,13 @@ function generateTimesheet(){
     if(normName(r.name)===empKey && r.dateObj) dtrByDate[dateKey(r.dateObj)]=r;
   });
 
+  const DAY_ABBR=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const rows=[];
   for(let d=new Date(period.start); d<=period.end; d.setDate(d.getDate()+1)){
     const dCopy=new Date(d);
     const dow=dCopy.getDay();
     const isWeekend = dow===0||dow===6;
+    const dayAbbr=DAY_ABBR[dow];
     const dispDate=(dCopy.getMonth()+1)+'/'+dCopy.getDate()+'/'+dCopy.getFullYear();
     const k=dateKey(dCopy);
     const dtrRow=dtrByDate[k];
@@ -2857,7 +2859,7 @@ function generateTimesheet(){
     if(dtrRow && dtrRow.holidayTypePdf && dtrRow.holidayTypePdf.toLowerCase().includes('regular')){
       shift=''; // Regular Holiday — no shift shown, per Column H
     }
-    rows.push([dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
+    rows.push([dayAbbr,dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
   }
 
   // Totals row — sums each numeric column, skipping non-numeric entries like "Leave"
@@ -2869,11 +2871,11 @@ function generateTimesheet(){
     });
     return total;
   };
-  const totalRegHrs = sumCol(4);
-  const totalApprOT = sumCol(5);
-  const totalRdot   = sumCol(6);
-  const totalHoliday= sumCol(7);
-  const totalsRow=['TOTAL','','','',
+  const totalRegHrs = sumCol(5);
+  const totalApprOT = sumCol(6);
+  const totalRdot   = sumCol(7);
+  const totalHoliday= sumCol(8);
+  const totalsRow=['','TOTAL','','','',
     totalRegHrs.toFixed(2), totalApprOT?totalApprOT.toFixed(1):'',
     totalRdot?totalRdot.toFixed(1):'', totalHoliday?totalHoliday.toFixed(1):''];
 
@@ -2919,16 +2921,16 @@ function generateTimesheet(){
   doc.autoTable({
     startY: y+18,
     margin:{left:margin,right:margin},
-    head:[['DATE','SHIFT','IN','OUT','REGULAR HRS','APPROVED OT','RDOT','HOLIDAY']],
+    head:[['DAY','DATE','SHIFT','IN','OUT','REGULAR HRS','APPROVED OT','RDOT','HOLIDAY']],
     body: rows,
     foot: [totalsRow],
     theme:'grid',
-    styles:{fontSize:8.5, cellPadding:4, textColor:[0,0,0], lineColor:[0,0,0], lineWidth:0.5},
+    styles:{fontSize:8, cellPadding:3.5, textColor:[0,0,0], lineColor:[0,0,0], lineWidth:0.5},
     headStyles:{textColor:[0,0,204], fontStyle:'bold', fillColor:[255,255,255], halign:'center'},
     footStyles:{textColor:[0,0,0], fontStyle:'bold', fillColor:[255,255,255], halign:'center', lineWidth:0.5, lineColor:[0,0,0]},
     columnStyles:{
-      0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'},
-      4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}
+      0:{halign:'center', cellWidth:32}, 1:{halign:'left'}, 2:{halign:'center'}, 3:{halign:'center'},
+      4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'}
     }
   });
 
