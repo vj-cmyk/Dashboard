@@ -736,6 +736,8 @@ footer span{color:var(--fd-indigo);font-weight:700}
         <select id="fEmp"><option value="">All Employees</option></select></div>
       <div class="fi"><label>Specific Day</label>
         <select id="fDay"><option value="">All Days</option></select></div>
+      <div class="fi" id="fHolWrap" style="display:none"><label>Holiday</label>
+        <select id="fHol"><option value="">All Holidays</option></select></div>
     </div>
     <div class="flt-acts">
       <button class="btn btn-rst" onclick="resetFilters()">↺ Reset</button>
@@ -808,6 +810,34 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="kpi-lbl">Spcl Hol OT (Hrs)</div>
       <div class="kpi-val" id="kSpcHolOTHrs">—</div>
       <div class="kpi-sub" id="kSpcHolOTHrsSub">—</div>
+    </div>
+  </div>
+
+  <!-- HOLIDAY BREAKDOWN (from HOLIDAY tab) -->
+  <div class="sl" id="holSectionLbl" style="display:none">🎉 Holiday Breakdown</div>
+  <div class="tbl-box" id="holBreakdownBox" style="display:none">
+    <div class="tbl-hdr">
+      <div class="tbl-ttl" style="color:#f59e0b">🎉 Holidays in Filtered Period — by Specific Type</div>
+      <div class="tbl-ctrls">
+        <span style="font-size:11.5px;color:var(--muted)">Sourced from the HOLIDAY tab · shows the exact holiday name/type behind each Regular/Special flag</span>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Date ↕</th>
+          <th>Holiday Name ↕</th>
+          <th>Type ↕</th>
+          <th>Pay Code ↕</th>
+          <th>Headcount ↕</th>
+          <th>Reg Hol (Days) ↕</th>
+          <th>Special Hol (Days) ↕</th>
+          <th>Reg Hol OT (Hrs) ↕</th>
+          <th>Spc Hol OT (Hrs) ↕</th>
+          <th>Total ₱ ↕</th>
+        </tr></thead>
+        <tbody id="holBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -1094,8 +1124,9 @@ footer span{color:var(--fd-indigo);font-weight:700}
           <th onclick="sortDTR(16)">Rest OT ↕</th>
           <th onclick="sortDTR(17)">Reg Hol ↕</th>
           <th onclick="sortDTR(18)">Spc Hol ↕</th>
-          <th onclick="sortDTR(19)">Total Billed ↕</th>
-          <th onclick="sortDTR(20)">Status ↕</th>
+          <th onclick="sortDTR(19)">Holiday ↕</th>
+          <th onclick="sortDTR(20)">Total Billed ↕</th>
+          <th onclick="sortDTR(21)">Status ↕</th>
         </tr></thead>
         <tbody id="dtrBody"></tbody>
       </table>
@@ -1160,6 +1191,7 @@ const CLR = {
 /* ═══ STATE ═══ */
 let RAW=[], FILTERED=[];
 let ROSTER=[], LEAVE_SET=new Set(), ATTEND=[], ATTEND_FILTERED=[];
+let HOLIDAY_MAP={}; // dateKey -> {name, type, payCode} — from optional HOLIDAY tab
 let REPORT_START=null, REPORT_END=null;
 let UNROSTERED_EMPLOYEES=[];
 let hasAttendanceData=false;
@@ -1197,6 +1229,17 @@ function processFile(file){
       const dtrSheetName = findSheet('DTR','Sheet1') || wb.SheetNames[0];
       const schedSheetName = findSheet('SCHEDULE','Schedule');
       const leaveSheetName = findSheet('LEAVE','Leave');
+      const holidaySheetName = findSheet('HOLIDAY','Holidays');
+
+      // Optional HOLIDAY tab → date-keyed lookup of holiday name/type/pay code.
+      // Parsed BEFORE normalizeRows() so each DTR row can be enriched with the
+      // specific holiday it falls on (e.g. "Regular Holiday — New Year's Day")
+      // instead of only knowing it was Regular vs Special from the DTR flags.
+      HOLIDAY_MAP={};
+      if(holidaySheetName){
+        const holidayJson=XLSX.utils.sheet_to_json(wb.Sheets[holidaySheetName],{defval:'',raw:false});
+        HOLIDAY_MAP=buildHolidayMap(holidayJson);
+      }
 
       const dtrJson = XLSX.utils.sheet_to_json(wb.Sheets[dtrSheetName],{defval:'',raw:false});
       if(!dtrJson.length){showToast('❌ No DTR data found');return;}
@@ -1313,6 +1356,15 @@ function normalizeRows(rows){
     const regHolOTHrs = gn(r,['Reg ular Hol OT (Hours)','Regular Hol OT (Hours)','Reg Hol OT (Hours)']);
     const spcHolOTHrs = gn(r,['Special Hol (Hours)','Special Hol Hours']);
 
+    // Specific holiday detail from the optional HOLIDAY tab (name + DOLE-style
+    // type), keyed off this row's own date. Falls back to blank when no
+    // HOLIDAY tab was uploaded or the date isn't a listed holiday — existing
+    // Reg Hol / Special Hol columns keep working exactly as before either way.
+    const holInfo = dateObj ? HOLIDAY_MAP[dateKey(dateObj)] : null;
+    const holidayName = holInfo ? holInfo.name : '';
+    const holidayTypeDetail = holInfo ? holInfo.type : '';
+    const holidayPayCode = holInfo ? holInfo.payCode : '';
+
     /* ── TARDY & UNDERTIME DETECTION ── */
     const shiftSMins = parseTimeMins(shiftS);
     const shiftEMins = parseTimeMins(shiftE);
@@ -1362,6 +1414,7 @@ function normalizeRows(rows){
       base, otHrs, ndHrs, rdDays, rdHrs, restOT,
       regHol, holDays, regHolOT, spcHolD, spcHolH,
       otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered, holidayTypePdf,
+      holidayName, holidayTypeDetail, holidayPayCode,
       totalBilled, variance, issues, status
     };
   }).filter(r=>r.name);
@@ -1459,6 +1512,33 @@ function getScheduleAsOf(empKey, dateObj){
     else break;
   }
   return applicable;
+}
+
+/* ═══ HOLIDAY (from HOLIDAY tab) ═══
+   Expected columns: Date | (blank/Day-of-week) | Name | Type | Pay Code.
+   Type carries the DOLE-style classification (Regular Holiday, Special
+   Working Day, Special Non-working Holiday, Observance, etc.) — the detail
+   that "Reg Hol (Day)" / "Special Hol (Day)" flags on the DTR tab collapse
+   into a binary Regular/Special split. Pay Code should still align to
+   Regular Hol / Special Hol for payroll-rate purposes. */
+function buildHolidayMap(rows){
+  const map={};
+  rows.forEach(r=>{
+    const dateRaw = gc(r,['Date']);
+    const dateObj = parseDate(dateRaw);
+    if(!dateObj) return;
+    const name    = gc(r,['Name','Holiday Name','Holiday']);
+    const type    = gc(r,['Type','Holiday Type']);
+    const payCode = gc(r,['Pay Code','PayCode','Pay  Code']);
+    const k = dateKey(dateObj);
+    // If two holiday rows land on the same date (e.g. observance + statutory
+    // duplicate), keep the one with a Pay Code set — it's the one that
+    // actually drives payroll.
+    if(!map[k] || (!map[k].payCode && payCode)){
+      map[k] = {name, type, payCode};
+    }
+  });
+  return map;
 }
 
 /* ═══ LEAVE (from LEAVE tab) ═══ */
@@ -1707,6 +1787,11 @@ function populateFilters(){
   fillSel('fMon',  uniq(RAW.map(r=>r.month)),'All Months');
   fillSel('fEmp',  uniq(RAW.map(r=>r.name)),'All Employees');
   fillSel('fDay',  uniq(RAW.map(r=>r.date).filter(Boolean)),'All Days');
+  // Holiday filter only makes sense (and only shows) once a HOLIDAY tab has
+  // been uploaded — otherwise every row's holidayName is blank.
+  const holNames = uniq(RAW.map(r=>r.holidayName).filter(Boolean));
+  fillSel('fHol', holNames, 'All Holidays');
+  document.getElementById('fHolWrap').style.display = holNames.length ? '' : 'none';
 }
 function applyFilters(){
   const site=document.getElementById('fSite').value;
@@ -1715,6 +1800,7 @@ function applyFilters(){
   const mon =document.getElementById('fMon').value;
   const emp =document.getElementById('fEmp').value;
   const day =document.getElementById('fDay').value;
+  const hol =document.getElementById('fHol').value;
   FILTERED=RAW.filter(r=>{
     if(site&&r.site!==site) return false;
     if(sup&&r.supervisor!==sup) return false;
@@ -1722,6 +1808,7 @@ function applyFilters(){
     if(mon&&r.month!==mon) return false;
     if(emp&&r.name!==emp) return false;
     if(day&&r.date!==day) return false;
+    if(hol&&r.holidayName!==hol) return false;
     return true;
   });
   ATTEND_FILTERED=filterAttend(site,sup,emp,day);
@@ -1744,7 +1831,7 @@ function filterAttend(site,sup,emp,day){
   });
 }
 function resetFilters(){
-  ['fSite','fSup','fCut','fMon','fEmp','fDay'].forEach(id=>document.getElementById(id).value='');
+  ['fSite','fSup','fCut','fMon','fEmp','fDay','fHol'].forEach(id=>document.getElementById(id).value='');
   activeSup=null;
   document.getElementById('supBanner').classList.remove('on');
   document.getElementById('supCard').classList.remove('drill-active');
@@ -1762,6 +1849,7 @@ function renderAll(){
   renderCharts();
   renderIrrData(d);
   renderDTRData(d);
+  renderHolidayBreakdown(d);
   if(hasAttendanceData){
     renderAttendanceKPIs(ATTEND_FILTERED);
     renderAbsSiteChart(ATTEND_FILTERED);
@@ -1808,6 +1896,80 @@ function fmtMins(m){
   return Math.floor(m/60)+'h '+(m%60)+'m';
 }
 
+/* Builds a KPI subtext like "New Year's Day, Labor Day +1 more" from the
+   specific holidays present in the filtered rows matching `test`. Falls back
+   to a plain record count when no HOLIDAY tab was uploaded (no names known). */
+function holidayNameSub(d, test){
+  const rows = d.filter(test);
+  const names = [...new Set(rows.filter(r=>r.holidayName).map(r=>r.holidayName))];
+  if(!names.length) return rows.length+' records';
+  const shown = names.slice(0,2).join(', ');
+  return names.length>2 ? shown+' +'+(names.length-2)+' more' : shown;
+}
+
+/* ═══ HOLIDAY BREAKDOWN (from HOLIDAY tab) ═══
+   Groups the filtered DTR rows by calendar date so every holiday in the
+   period shows its real name + DOLE-style type (Regular Holiday, Special
+   Working Day, Special Non-working Holiday, Observance...), not just which
+   binary Reg/Special column had a value. Hidden entirely when no HOLIDAY
+   tab was uploaded, since there's nothing to name. */
+function renderHolidayBreakdown(d){
+  const box=document.getElementById('holBreakdownBox');
+  const lbl=document.getElementById('holSectionLbl');
+  if(!Object.keys(HOLIDAY_MAP).length){
+    box.style.display='none'; lbl.style.display='none';
+    return;
+  }
+  // Only dates that actually appear in the filtered DTR rows AND are listed
+  // in HOLIDAY_MAP — i.e. holidays actually covered by the current view.
+  const byDate={};
+  d.forEach(r=>{
+    if(!r.dateObj || !r.holidayName) return;
+    const k=dateKey(r.dateObj);
+    if(!byDate[k]) byDate[k]={
+      dateObj:r.dateObj, name:r.holidayName, type:r.holidayTypeDetail, payCode:r.holidayPayCode,
+      names:new Set(), regHolDays:0, spcHolDays:0, regHolOTHrs:0, spcHolOTHrs:0, totalPeso:0
+    };
+    const g=byDate[k];
+    g.names.add(r.name);
+    g.regHolDays += r.regHol||0;
+    g.spcHolDays += r.spcHolD||0;
+    g.regHolOTHrs += r.regHolOTHrs||0;
+    g.spcHolOTHrs += r.spcHolOTHrs||0;
+    g.totalPeso += (r.regHol||0)+(r.spcHolD||0)+(r.regHolOTHrs||0)+(r.spcHolOTHrs||0);
+  });
+  const groups=Object.values(byDate).sort((a,b)=>a.dateObj-b.dateObj);
+  if(!groups.length){
+    box.style.display='none'; lbl.style.display='none';
+    return;
+  }
+  box.style.display=''; lbl.style.display='';
+  const typeBadge=(t)=>{
+    const tl=(t||'').toLowerCase();
+    let cls='tag-ok';
+    if(tl.includes('special')) cls='tag-tardy';
+    else if(tl.includes('regular')) cls='tag-irr';
+    else if(tl.includes('observance')) cls='tag-ut';
+    return `<span class="tag ${cls}">${t||'—'}</span>`;
+  };
+  document.getElementById('holBody').innerHTML = groups.map(g=>{
+    const dd=g.dateObj;
+    const dispDate=(dd.getMonth()+1)+'/'+dd.getDate()+'/'+dd.getFullYear();
+    return `<tr>
+      <td>${dispDate}</td>
+      <td>${g.name||'—'}</td>
+      <td>${typeBadge(g.type)}</td>
+      <td>${g.payCode||'—'}</td>
+      <td>${g.names.size.toLocaleString()}</td>
+      <td>${g.regHolDays?fmtN(g.regHolDays):'—'}</td>
+      <td>${g.spcHolDays?fmtN(g.spcHolDays):'—'}</td>
+      <td>${g.regHolOTHrs?fmtN(g.regHolOTHrs):'—'}</td>
+      <td>${g.spcHolOTHrs?fmtN(g.spcHolOTHrs):'—'}</td>
+      <td>₱${fmtN(g.totalPeso)}</td>
+    </tr>`;
+  }).join('');
+}
+
 /* ═══ KPIs ═══ */
 function renderKPIs(d){
   d=d||FILTERED;
@@ -1829,8 +1991,8 @@ function renderKPIs(d){
   set('kOT',         '₱'+fmtWhole(sumF(d,'otHrs')),   d.filter(r=>r.otHrs>0).length+' w/ OT');
   set('kRdot',       '₱'+fmtWhole(sumF(d,'restOT')),  d.filter(r=>r.restOT>0).length+' rest OT');
   set('kND',         '₱'+fmtWhole(sumF(d,'ndHrs')),   d.filter(r=>r.ndHrs>0).length+' w/ ND');
-  set('kHolR',       '₱'+fmtWhole(sumF(d,'regHol')),       d.filter(r=>r.regHol>0).length+' records');
-  set('kHolS',       '₱'+fmtWhole(sumF(d,'spcHolD')),      d.filter(r=>r.spcHolD>0).length+' records');
+  set('kHolR',       '₱'+fmtWhole(sumF(d,'regHol')),       holidayNameSub(d, r=>r.regHol>0));
+  set('kHolS',       '₱'+fmtWhole(sumF(d,'spcHolD')),      holidayNameSub(d, r=>r.spcHolD>0));
   set('kRegHolOTHrs', '₱'+fmtWhole(sumF(d,'regHolOTHrs')), d.filter(r=>r.regHolOTHrs>0).length+' records');
   set('kSpcHolOTHrs', '₱'+fmtWhole(sumF(d,'spcHolOTHrs')), d.filter(r=>r.spcHolOTHrs>0).length+' records');
   set('kHC',         hc.toLocaleString(),           'Unique employees');
@@ -2611,13 +2773,14 @@ function getDTRFiltered(){
     r.site.toLowerCase().includes(dtrTerm)||
     r.supervisor.toLowerCase().includes(dtrTerm)||
     r.date.toLowerCase().includes(dtrTerm)||
-    r.status.toLowerCase().includes(dtrTerm)
+    r.status.toLowerCase().includes(dtrTerm)||
+    (r.holidayName||'').toLowerCase().includes(dtrTerm)
   );
 }
 const DTR_SORT=['date','name','supervisor','site','month','cutoff',
                 'shiftS','shiftE','timeIN','timeOut','minsLate','minsEarly',
                 'base','otHrs','ndHrs','rdDays','restOT','regHol','spcHolD',
-                'totalBilled','status'];
+                'holidayName','totalBilled','status'];
 function sortDTR(col){
   if(dtrSC===col) dtrSA=!dtrSA; else{dtrSC=col;dtrSA=true;}
   const k=DTR_SORT[col];
@@ -2636,7 +2799,7 @@ function renderDTRPage(){
   const start=(dtrPage-1)*PG,slice=data.slice(start,start+PG);
   const body=document.getElementById('dtrBody');
   if(!slice.length){
-    body.innerHTML=`<tr><td colspan="21"><div class="empty"><div class="ico">📋</div><p>No records</p></div></td></tr>`;
+    body.innerHTML=`<tr><td colspan="22"><div class="empty"><div class="ico">📋</div><p>No records</p></div></td></tr>`;
   }else{
     body.innerHTML=slice.map(r=>`<tr>
       <td>${r.date}</td>
@@ -2658,6 +2821,7 @@ function renderDTRPage(){
       <td class="${r.restOT>0?'num-hi':''}">${r.restOT?'₱'+fmtN(r.restOT):'—'}</td>
       <td>${r.regHol||'—'}</td>
       <td>${r.spcHolD||'—'}</td>
+      <td>${r.holidayName ? `<span title="${r.holidayTypeDetail||''}">${r.holidayName}</span>` : '—'}</td>
       <td>₱${fmtN(r.totalBilled)}</td>
       <td>${statusTag(r)}</td>
     </tr>`).join('');
@@ -2717,11 +2881,13 @@ function exportDTR(){
     'Shift Start','Shift End','Time IN','Time Out',
     'Mins Late','Mins Early','Base Worked (₱)','OT Hrs',
     'ND Hrs','Rest Day Days','Rest OT','Reg Hol','Spc Hol Days',
+    'Holiday Name','Holiday Type',
     'Total Billed (₱)','Status'];
   const rows=d.map(r=>[r.date,r.name,r.supervisor,r.site,r.month,r.cutoff,
     r.shiftS,r.shiftE,r.timeIN,r.timeOut,
     r.minsLate,r.minsEarly,r.base,r.otHrs,
     r.ndHrs,r.rdDays,r.restOT,r.regHol,r.spcHolD,
+    r.holidayName||'',r.holidayTypeDetail||'',
     r.totalBilled,r.status]);
   dlCSV([h,...rows],'DTR_Export.csv');
   showToast('⬇ DTR exported');
@@ -2844,6 +3010,7 @@ function generateTimesheet(){
     }
     // No assigned shift on a rest day (weekend) — but RDOT/holiday/punches can
     // still legitimately occur if the employee actually worked that rest day.
+    const holInfo = HOLIDAY_MAP[k]; // specific holiday name/type for this date, if any
     if(dtrRow){
       timeIn = dtrRow.timeIN||'';
       timeOut = dtrRow.timeOut||'';
@@ -2852,11 +3019,16 @@ function generateTimesheet(){
       if(dtrRow.rdotHrsPdf>0) rdot=dtrRow.rdotHrsPdf.toFixed(1);
       const holDaysVal = dtrRow.regHolDaysPdf>0?dtrRow.regHolDaysPdf:(dtrRow.spcHolDaysPdf>0?dtrRow.spcHolDaysPdf:0);
       const holVal = holDaysVal*8; // convert days -> hours (1 day = 8 hrs)
-      if(holVal>0) holiday=holVal.toFixed(1);
+      // Just the hours here — the specific holiday name/type is already
+      // listed once in the "Holidays this period" legend below the table,
+      // so repeating it on every row would be redundant.
+      if(holVal>0) holiday = holVal.toFixed(1);
     } else if(onLeave && !isWeekend){
       regHrs='Leave';
     }
-    if(dtrRow && dtrRow.holidayTypePdf && dtrRow.holidayTypePdf.toLowerCase().includes('regular')){
+    const isRegularHolType = (dtrRow && dtrRow.holidayTypePdf && dtrRow.holidayTypePdf.toLowerCase().includes('regular'))
+      || (holInfo && holInfo.type && holInfo.type.toLowerCase().includes('regular'));
+    if(isRegularHolType){
       shift=''; // Regular Holiday — no shift shown, per Column H
     }
     rows.push([dayAbbr,dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
@@ -2935,6 +3107,30 @@ function generateTimesheet(){
   });
 
   let finalY = doc.lastAutoTable.finalY + 14;
+
+  // Legend: which specific holidays (name + DOLE type) fell within this pay
+  // period, sourced from the HOLIDAY tab. Shown even for holiday dates the
+  // employee didn't work, so the printed timesheet documents holiday type
+  // clearly instead of leaving it to the Regular/Special flag alone.
+  const holidaysInPeriod = Object.keys(HOLIDAY_MAP)
+    .filter(k=>{
+      const hd=new Date(k+'T00:00:00');
+      return hd>=period.start && hd<=period.end;
+    })
+    .sort()
+    .map(k=>({...HOLIDAY_MAP[k], key:k}));
+  if(holidaysInPeriod.length){
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+    doc.text('Holidays this period:', margin, finalY);
+    doc.setFont('helvetica','normal');
+    const legendText = holidaysInPeriod.map(h=>{
+      const hd=new Date(h.key+'T00:00:00');
+      return (hd.getMonth()+1)+'/'+hd.getDate()+' - '+(h.name||'—')+' ('+(h.type||'—')+')';
+    }).join('   |   ');
+    doc.text(legendText, margin+92, finalY, {maxWidth: pageW-margin*2-92});
+    finalY += 14;
+  }
+
   doc.setFont('helvetica','italic'); doc.setFontSize(8);
   doc.text('*I hereby certify that these hours are true and accurate record of all the time worked during the pay period.', pageW-margin, finalY, {align:'right'});
 
