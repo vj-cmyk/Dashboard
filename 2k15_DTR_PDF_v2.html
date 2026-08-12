@@ -829,6 +829,7 @@ footer span{color:var(--fd-indigo);font-weight:700}
           <th>Holiday Name ↕</th>
           <th>Type ↕</th>
           <th>Pay Code ↕</th>
+          <th>Site(s) ↕</th>
           <th>Headcount ↕</th>
           <th>Reg Hol (Days) ↕</th>
           <th>Special Hol (Days) ↕</th>
@@ -1357,10 +1358,13 @@ function normalizeRows(rows){
     const spcHolOTHrs = gn(r,['Special Hol (Hours)','Special Hol Hours']);
 
     // Specific holiday detail from the optional HOLIDAY tab (name + DOLE-style
-    // type), keyed off this row's own date. Falls back to blank when no
-    // HOLIDAY tab was uploaded or the date isn't a listed holiday — existing
-    // Reg Hol / Special Hol columns keep working exactly as before either way.
-    const holInfo = dateObj ? HOLIDAY_MAP[dateKey(dateObj)] : null;
+    // type), resolved for THIS row's own site. A holiday scoped to a specific
+    // site (e.g. "CEB") only attaches to rows from that site; blank-site
+    // (national) holidays attach to every row. Falls back to blank when no
+    // HOLIDAY tab was uploaded, the date isn't listed, or this site isn't
+    // covered — existing Reg Hol / Special Hol columns keep working as-is.
+    const rowSite = gc(r,['Site','Location','Center']);
+    const holInfo = dateObj ? resolveHoliday(dateObj, rowSite) : null;
     const holidayName = holInfo ? holInfo.name : '';
     const holidayTypeDetail = holInfo ? holInfo.type : '';
     const holidayPayCode = holInfo ? holInfo.payCode : '';
@@ -1405,7 +1409,7 @@ function normalizeRows(rows){
       _i:i, date:dateRaw, dateObj,
       name:       gc(r,['Name','Employee Name','Employee']),
       supervisor: gc(r,['Supervisor','Sup']),
-      site:       gc(r,['Site','Location','Center']),
+      site:       rowSite,
       month:      gc(r,['Month']),
       cutoff:     gc(r,['Cutoff','Cut-off','Period']),
       shiftS, shiftE, timeIN, timeOut,
@@ -1515,12 +1519,18 @@ function getScheduleAsOf(empKey, dateObj){
 }
 
 /* ═══ HOLIDAY (from HOLIDAY tab) ═══
-   Expected columns: Date | (blank/Day-of-week) | Name | Type | Pay Code.
+   Expected columns: Date | (blank/Day-of-week) | Name | Type | Pay Code | Site.
    Type carries the DOLE-style classification (Regular Holiday, Special
    Working Day, Special Non-working Holiday, Observance, etc.) — the detail
    that "Reg Hol (Day)" / "Special Hol (Day)" flags on the DTR tab collapse
-   into a binary Regular/Special split. Pay Code should still align to
-   Regular Hol / Special Hol for payroll-rate purposes. */
+   into a binary Regular/Special split.
+   Site is OPTIONAL and rare: blank/empty = applies to every site (the usual
+   case, e.g. national holidays). A value like "CEB" scopes that holiday to
+   only that site (e.g. a local charter-day holiday) — other sites' employees
+   working that date are NOT credited as holiday pay for it.
+   HOLIDAY_MAP is keyed by date, and each date maps to an ARRAY of entries
+   (a date can have both a national holiday AND a site-specific local one),
+   resolved per-employee via resolveHoliday() below. */
 function buildHolidayMap(rows){
   const map={};
   rows.forEach(r=>{
@@ -1530,15 +1540,26 @@ function buildHolidayMap(rows){
     const name    = gc(r,['Name','Holiday Name','Holiday']);
     const type    = gc(r,['Type','Holiday Type']);
     const payCode = gc(r,['Pay Code','PayCode','Pay  Code']);
+    const site    = gc(r,['Site','Site ','Sites']).toUpperCase(); // '' = all sites
     const k = dateKey(dateObj);
-    // If two holiday rows land on the same date (e.g. observance + statutory
-    // duplicate), keep the one with a Pay Code set — it's the one that
-    // actually drives payroll.
-    if(!map[k] || (!map[k].payCode && payCode)){
-      map[k] = {name, type, payCode};
-    }
+    if(!map[k]) map[k]=[];
+    map[k].push({name, type, payCode, site});
   });
   return map;
+}
+
+/* Resolves which HOLIDAY_MAP entry (if any) applies to a specific employee
+   site on a specific date. A site-specific entry takes priority over a
+   blank/all-site entry on the same date, since it's the more specific rule. */
+function resolveHoliday(dateObj, site){
+  if(!dateObj) return null;
+  const entries = HOLIDAY_MAP[dateKey(dateObj)];
+  if(!entries || !entries.length) return null;
+  const siteU = (site||'').toUpperCase();
+  const siteMatch = entries.find(e=>e.site && e.site===siteU);
+  if(siteMatch) return siteMatch;
+  const allSiteMatch = entries.find(e=>!e.site);
+  return allSiteMatch || null;
 }
 
 /* ═══ LEAVE (from LEAVE tab) ═══ */
@@ -1922,16 +1943,19 @@ function renderHolidayBreakdown(d){
   }
   // Only dates that actually appear in the filtered DTR rows AND are listed
   // in HOLIDAY_MAP — i.e. holidays actually covered by the current view.
+  // Grouped by date+name (not just date) so a national holiday and a
+  // site-specific one landing on the same date stay as separate rows.
   const byDate={};
   d.forEach(r=>{
     if(!r.dateObj || !r.holidayName) return;
-    const k=dateKey(r.dateObj);
+    const k=dateKey(r.dateObj)+'|'+r.holidayName;
     if(!byDate[k]) byDate[k]={
       dateObj:r.dateObj, name:r.holidayName, type:r.holidayTypeDetail, payCode:r.holidayPayCode,
-      names:new Set(), regHolDays:0, spcHolDays:0, regHolOTHrs:0, spcHolOTHrs:0, totalPeso:0
+      names:new Set(), sites:new Set(), regHolDays:0, spcHolDays:0, regHolOTHrs:0, spcHolOTHrs:0, totalPeso:0
     };
     const g=byDate[k];
     g.names.add(r.name);
+    g.sites.add(r.site);
     g.regHolDays += r.regHol||0;
     g.spcHolDays += r.spcHolD||0;
     g.regHolOTHrs += r.regHolOTHrs||0;
@@ -1960,6 +1984,7 @@ function renderHolidayBreakdown(d){
       <td>${g.name||'—'}</td>
       <td>${typeBadge(g.type)}</td>
       <td>${g.payCode||'—'}</td>
+      <td>${[...g.sites].sort().join(', ')||'—'}</td>
       <td>${g.names.size.toLocaleString()}</td>
       <td>${g.regHolDays?fmtN(g.regHolDays):'—'}</td>
       <td>${g.spcHolDays?fmtN(g.spcHolDays):'—'}</td>
@@ -3010,7 +3035,9 @@ function generateTimesheet(){
     }
     // No assigned shift on a rest day (weekend) — but RDOT/holiday/punches can
     // still legitimately occur if the employee actually worked that rest day.
-    const holInfo = HOLIDAY_MAP[k]; // specific holiday name/type for this date, if any
+    // Resolved for THIS employee's site — a site-scoped holiday (e.g. CEBU
+    // Charter Day for CEB only) won't show up for employees at other sites.
+    const holInfo = resolveHoliday(dCopy, emp.site);
     if(dtrRow){
       timeIn = dtrRow.timeIN||'';
       timeOut = dtrRow.timeOut||'';
@@ -3109,16 +3136,20 @@ function generateTimesheet(){
   let finalY = doc.lastAutoTable.finalY + 14;
 
   // Legend: which specific holidays (name + DOLE type) fell within this pay
-  // period, sourced from the HOLIDAY tab. Shown even for holiday dates the
-  // employee didn't work, so the printed timesheet documents holiday type
-  // clearly instead of leaving it to the Regular/Special flag alone.
+  // period AND apply to this employee's site, sourced from the HOLIDAY tab.
+  // Shown even for holiday dates the employee didn't work, so the printed
+  // timesheet documents holiday type clearly instead of leaving it to the
+  // Regular/Special flag alone. Site-scoped holidays (e.g. CEBU Charter Day)
+  // are excluded here for employees outside that site.
   const holidaysInPeriod = Object.keys(HOLIDAY_MAP)
     .filter(k=>{
       const hd=new Date(k+'T00:00:00');
       return hd>=period.start && hd<=period.end;
     })
-    .sort()
-    .map(k=>({...HOLIDAY_MAP[k], key:k}));
+    .map(k=>({resolved: resolveHoliday(new Date(k+'T00:00:00'), emp.site), key:k}))
+    .filter(h=>h.resolved)
+    .sort((a,b)=>a.key.localeCompare(b.key))
+    .map(h=>({...h.resolved, key:h.key}));
   if(holidaysInPeriod.length){
     doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
     doc.text('Holidays this period:', margin, finalY);
