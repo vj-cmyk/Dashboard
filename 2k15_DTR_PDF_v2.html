@@ -1281,7 +1281,7 @@ function processFile(file){
       // Optional LEAVE tab → approved leave lookup
       LEAVE_SET=new Set();
       if(leaveSheetName){
-        const leaveJson=XLSX.utils.sheet_to_json(wb.Sheets[leaveSheetName],{defval:'',raw:false});
+        const leaveJson=XLSX.utils.sheet_to_json(wb.Sheets[leaveSheetName],{header:1,defval:'',raw:false});
         LEAVE_SET=buildLeaveSet(leaveJson);
       }
 
@@ -1587,13 +1587,22 @@ function resolveHoliday(dateObj, site){
 }
 
 /* ═══ LEAVE (from LEAVE tab) ═══ */
+/* ═══ LEAVE (from LEAVE tab) ═══
+   Read POSITIONALLY (col A = Name, col B = Date, col C = Approved By) rather
+   than by header name. Real-world exports of this tab have shipped with NO
+   header row at all — data starts immediately on row 1 — which silently
+   broke name/date matching when this used named-header lookup (gc()) and
+   left LEAVE_SET empty, making "On Leave" never populate. A header row, if
+   present, is harmlessly skipped since its 2nd cell won't parse as a date. */
 function buildLeaveSet(rows){
   const set=new Set();
-  rows.forEach(r=>{
-    const name = normName(gc(r,['LEAVE REQUEST BY:','Name','Employee']));
-    const dateRaw = gc(r,['LEAVE DATE','Date']);
-    const dateObj = parseDate(dateRaw);
-    if(name && dateObj) set.add(name+'|'+dateKey(dateObj));
+  rows.forEach(row=>{
+    if(!Array.isArray(row) || row.length<2) return;
+    const dateObj = parseDate(row[1]);
+    if(!dateObj) return; // header row, blank row, or malformed — skip safely
+    const name = normName(row[0]);
+    if(!name) return;
+    set.add(name+'|'+dateKey(dateObj));
   });
   return set;
 }
@@ -1616,6 +1625,18 @@ function computeAttendance(){
     const key=nm+'|'+dateKey(r.dateObj);
     presentSet.add(key);
     if(!lastDTRDate[nm] || r.dateObj>lastDTRDate[nm]) lastDTRDate[nm]=r.dateObj;
+  });
+
+  // Date -> Cutoff/Month lookup, sourced from the DTR tab. Attendance records
+  // are generated per calendar day independent of the DTR rows, so without
+  // this they'd have no Cutoff/Month of their own — which is why the Cutoff
+  // filter previously had no effect on the Attendance & Absenteeism section.
+  const dateCutoffMap={}, dateMonthMap={};
+  RAW.forEach(r=>{
+    if(!r.dateObj) return;
+    const dk=dateKey(r.dateObj);
+    if(r.cutoff && !dateCutoffMap[dk]) dateCutoffMap[dk]=r.cutoff;
+    if(r.month && !dateMonthMap[dk]) dateMonthMap[dk]=r.month;
   });
 
   // Observed reporting window = min/max date across DTR — guarded against a
@@ -1683,8 +1704,10 @@ function computeAttendance(){
       else if(LEAVE_SET.has(key)) status='LEAVE';
       else status='ABSENT';
       const asOf=getScheduleAsOf(nm,dCopy);
-      out.push({date:dCopy, dateKey:dateKey(dCopy), name:nm,
+      const dk=dateKey(dCopy);
+      out.push({date:dCopy, dateKey:dk, name:nm,
         site:(asOf&&asOf.site)||emp.site, supervisor:(asOf&&asOf.supervisor)||emp.supervisor,
+        cutoff:dateCutoffMap[dk]||'', month:dateMonthMap[dk]||'',
         status, attrited:emp.status==='ATTRITED'});
     }
   });
@@ -1705,6 +1728,7 @@ function computeAttendance(){
     if(dow===0||dow===6) return; // Mon-Fri only, consistent with the rest of the engine
     out.push({date:r.dateObj, dateKey:dateKey(r.dateObj), name:nm,
       site:r.site||'', supervisor:r.supervisor||'',
+      cutoff:r.cutoff||'', month:r.month||'',
       status:'PRESENT', attrited:false, unrostered:true});
   });
   if(unrostered.size) UNROSTERED_EMPLOYEES=[...unrostered];
@@ -1975,20 +1999,22 @@ function applyFilters(){
     if(hols.length  && !hols.includes(r.holidayName)) return false;
     return true;
   });
-  ATTEND_FILTERED=filterAttend(sites,sups,emp,day);
+  ATTEND_FILTERED=filterAttend(sites,sups,cuts,mons,emp,day);
   activeSup=null;
   document.getElementById('supBanner').classList.remove('on');
   document.getElementById('supCard').classList.remove('drill-active');
   renderAll();
   showToast(`🔍 ${FILTERED.length.toLocaleString()} records matched`);
 }
-function filterAttend(sites,sups,emp,day){
+function filterAttend(sites,sups,cuts,mons,emp,day){
   if(!hasAttendanceData) return [];
   const dayISO = day ? dateKey(parseDate(day)) : '';
   const empNorm = emp ? normName(emp) : '';
   return ATTEND.filter(a=>{
     if(sites.length && !sites.includes(a.site)) return false;
     if(sups.length  && !sups.includes(a.supervisor)) return false;
+    if(cuts.length  && !cuts.includes(a.cutoff)) return false;
+    if(mons.length  && !mons.includes(a.month)) return false;
     if(empNorm&&a.name!==empNorm) return false;
     if(dayISO&&a.dateKey!==dayISO) return false;
     return true;
