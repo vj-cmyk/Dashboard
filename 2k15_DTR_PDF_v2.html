@@ -1699,15 +1699,26 @@ function computeAttendance(){
       // the window only governs whether an ABSENCE gets flagged, never
       // whether a genuine attendance record gets suppressed.
       if(!hasPunch && (d>windowEnd || d<windowStart)) continue;
-      let status;
-      if(hasPunch) status='PRESENT';
-      else if(LEAVE_SET.has(key)) status='LEAVE';
-      else status='ABSENT';
       const asOf=getScheduleAsOf(nm,dCopy);
       const dk=dateKey(dCopy);
+      const rowSite=(asOf&&asOf.site)||emp.site;
+      // HOLIDAY sits at the TOP of the status hierarchy: if this date is a
+      // Regular/Special holiday applicable to this employee's site (resolved
+      // the same site-aware way as the rest of the dashboard — a site-scoped
+      // holiday only applies to that site), it's tagged HOLIDAY regardless of
+      // whether they also happened to punch in or have a leave request that
+      // day. This keeps them out of Absent/Expected-workday counts entirely
+      // instead of being wrongly penalized for not working a non-working day.
+      const holInfo = resolveHoliday(dCopy, rowSite);
+      let status;
+      if(holInfo) status='HOLIDAY';
+      else if(hasPunch) status='PRESENT';
+      else if(LEAVE_SET.has(key)) status='LEAVE';
+      else status='ABSENT';
       out.push({date:dCopy, dateKey:dk, name:nm,
-        site:(asOf&&asOf.site)||emp.site, supervisor:(asOf&&asOf.supervisor)||emp.supervisor,
+        site:rowSite, supervisor:(asOf&&asOf.supervisor)||emp.supervisor,
         cutoff:dateCutoffMap[dk]||'', month:dateMonthMap[dk]||'',
+        holidayName: holInfo?holInfo.name:'', holidayType: holInfo?holInfo.type:'',
         status, attrited:emp.status==='ATTRITED'});
     }
   });
@@ -2042,11 +2053,19 @@ function renderAll(){
   renderDTRData(d);
   renderHolidayBreakdown(d);
   if(hasAttendanceData){
-    renderAttendanceKPIs(ATTEND_FILTERED);
-    renderAbsSiteChart(ATTEND_FILTERED);
-    renderAbsSupChart(ATTEND_FILTERED);
+    // HOLIDAY-status days are excluded from the KPI tiles, Absenteeism by
+    // Site/Supervisor charts, and the Absence Detail table below — they're
+    // non-working days, not something to count toward "expected" workdays
+    // or penalize as absence. The Daily Attendance Trend chart is the one
+    // exception: it renders its own dedicated "Holiday" segment so each
+    // day's bar still tallies to the full headcount, so it gets the
+    // unfiltered ATTEND_FILTERED instead.
+    const attendWork = ATTEND_FILTERED.filter(x=>x.status!=='HOLIDAY');
+    renderAttendanceKPIs(attendWork);
+    renderAbsSiteChart(attendWork);
+    renderAbsSupChart(attendWork);
     renderTrendChart(ATTEND_FILTERED);
-    renderAbsData(ATTEND_FILTERED);
+    renderAbsData(attendWork);
   }
 }
 
@@ -2211,15 +2230,21 @@ function renderKPIs(d){
 /* ═══ ATTENDANCE KPIs ═══ */
 function renderAttendanceKPIs(a){
   a=a||[];
-  const expected = a.length;
-  const presentRows = a.filter(x=>x.status==='PRESENT');
-  const absentRows = a.filter(x=>x.status==='ABSENT');
-  const leaveRows = a.filter(x=>x.status==='LEAVE');
+  // HOLIDAY-status days are excluded entirely from Expected/Present/Absent/
+  // Leave — they're non-working days, not workdays the employee failed to
+  // show up for, so they shouldn't count toward "expected" or drag down the
+  // absenteeism rate either way.
+  const holidayRows = a.filter(x=>x.status==='HOLIDAY');
+  const workRows = a.filter(x=>x.status!=='HOLIDAY');
+  const expected = workRows.length;
+  const presentRows = workRows.filter(x=>x.status==='PRESENT');
+  const absentRows = workRows.filter(x=>x.status==='ABSENT');
+  const leaveRows = workRows.filter(x=>x.status==='LEAVE');
   const present=presentRows.length, absent=absentRows.length, leave=leaveRows.length;
   const absRate = expected>0 ? (absent/expected*100) : 0;
   const presRate = expected>0 ? (present/expected*100) : 0;
-  const uniqEmp = new Set(a.map(x=>x.name)).size;
-  const uniqDays = new Set(a.map(x=>x.dateKey)).size;
+  const uniqEmp = new Set(workRows.map(x=>x.name)).size;
+  const uniqDays = new Set(workRows.map(x=>x.dateKey)).size;
 
   const set=(id,v,sub)=>{
     const el=document.getElementById(id);
@@ -2238,7 +2263,7 @@ function renderAttendanceKPIs(a){
     : new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
   const noteEl=document.getElementById('attritionNote');
   if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period` : '';
-  drawAbsRateSparkline(a);
+  drawAbsRateSparkline(workRows);
 }
 
 /* Lightweight canvas sparkline (no Chart.js instance) for the hero Absenteeism Rate KPI */
@@ -2294,7 +2319,7 @@ function drawAbsRateSparkline(a){
   ctx.fillStyle='#b45309';
   ctx.fill();
 }
-window.addEventListener('resize', ()=>{ if(hasAttendanceData) drawAbsRateSparkline(ATTEND_FILTERED); });
+window.addEventListener('resize', ()=>{ if(hasAttendanceData) drawAbsRateSparkline(ATTEND_FILTERED.filter(x=>x.status!=='HOLIDAY')); });
 
 /* ═══ ABSENTEEISM BY SITE ═══ */
 function renderAbsSiteChart(a){
@@ -2548,9 +2573,15 @@ function exportAbs(){
 function renderTrendChart(a){
   killChart('trend');
   a=a||[];
+  // Trend chart shows the FULL daily headcount, including a dedicated
+  // "Holiday" segment — unlike the KPI tiles/Absenteeism charts, which
+  // deliberately exclude Holiday days from their denominators. Without this
+  // segment, employees exempted on a holiday just vanished from the bar
+  // (e.g. Aug 19 showing 58 instead of the full ~63 headcount) instead of
+  // being visibly accounted for.
   const byDate={};
   a.forEach(x=>{
-    if(!byDate[x.dateKey]) byDate[x.dateKey]={present:0,absent:0,leave:0};
+    if(!byDate[x.dateKey]) byDate[x.dateKey]={present:0,absent:0,leave:0,holiday:0};
     byDate[x.dateKey][x.status.toLowerCase()]++;
   });
   const dates=Object.keys(byDate).sort();
@@ -2561,6 +2592,7 @@ function renderTrendChart(a){
   const presentArr=dates.map(d=>byDate[d].present);
   const absentArr=dates.map(d=>byDate[d].absent);
   const leaveArr=dates.map(d=>byDate[d].leave);
+  const holidayArr=dates.map(d=>byDate[d].holiday);
 
   const canvas=document.getElementById('cTrend');
   if(!canvas) return;
@@ -2571,7 +2603,8 @@ function renderTrendChart(a){
       datasets:[
         {label:'Present',data:presentArr,backgroundColor:CLR.mint,borderRadius:4,stack:'s'},
         {label:'On Leave',data:leaveArr,backgroundColor:CLR.lavender,borderRadius:4,stack:'s'},
-        {label:'Absent',data:absentArr,backgroundColor:CLR.coral,borderRadius:4,stack:'s'}
+        {label:'Absent',data:absentArr,backgroundColor:CLR.coral,borderRadius:4,stack:'s'},
+        {label:'Holiday',data:holidayArr,backgroundColor:CLR.gold,borderRadius:4,stack:'s'}
       ]
     },
     options:{
@@ -3240,10 +3273,18 @@ function generateTimesheet(){
     } else if(onLeave && !isWeekend){
       regHrs='Leave';
     }
-    const isRegularHolType = (dtrRow && dtrRow.holidayTypePdf && dtrRow.holidayTypePdf.toLowerCase().includes('regular'))
-      || (holInfo && holInfo.type && holInfo.type.toLowerCase().includes('regular'));
-    if(isRegularHolType){
-      shift=''; // Regular Holiday — no shift shown, per Column H
+    // No shift shown for Regular Holidays AND Special Non-working Holidays —
+    // both are non-working days by DOLE classification. Deliberately does
+    // NOT match "Special Working Holiday" (employees ARE expected to work
+    // that one), so the check requires "special" + "non-working" together,
+    // not just "special" alone. Prefers the specific type from the HOLIDAY
+    // tab (holInfo) when available; falls back to the DTR's own Holiday flag.
+    const typeSrc = (holInfo && holInfo.type) || (dtrRow && dtrRow.holidayTypePdf) || '';
+    const typeNorm = typeSrc.toLowerCase().replace(/[\s-]/g,'');
+    const noShiftHolType = typeNorm.includes('regular')
+      || (typeNorm.includes('special') && typeNorm.includes('nonworking'));
+    if(noShiftHolType){
+      shift=''; // Regular Holiday or Special Non-working Holiday — no shift shown, per Column H
     }
     rows.push([dayAbbr,dispDate,shift,timeIn,timeOut,regHrs,apprOT,rdot,holiday]);
   }
