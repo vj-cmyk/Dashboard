@@ -757,7 +757,7 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="fi"><label>Month</label>
         <div class="ms-wrap" id="fMon"></div></div>
       <div class="fi"><label>Employee</label>
-        <select id="fEmp"><option value="">All Employees</option></select></div>
+        <div class="ms-wrap" id="fEmp"></div></div>
       <div class="fi"><label>Specific Day</label>
         <select id="fDay"><option value="">All Days</option></select></div>
       <div class="fi" id="fHolWrap" style="display:none"><label>Holiday</label>
@@ -1866,7 +1866,7 @@ function fillSel(id,vals,ph){
    that field), matching how the single-value dropdowns used to behave.
    Selections only take effect when the person clicks "Apply ▶", same as
    the existing single-select filters — no surprise re-filtering per click. */
-const MULTI_SEL = { site:[], supervisor:[], cutoff:[], month:[], holiday:[] };
+const MULTI_SEL = { site:[], supervisor:[], cutoff:[], month:[], holiday:[], employee:[] };
 const MS_META = {}; // containerId -> {field, placeholder}
 
 function buildMultiSelect(containerId, field, placeholder){
@@ -1981,13 +1981,14 @@ buildMultiSelect('fSup','supervisor','All Supervisors');
 buildMultiSelect('fCut','cutoff','All Cutoffs');
 buildMultiSelect('fMon','month','All Months');
 buildMultiSelect('fHol','holiday','All Holidays');
+buildMultiSelect('fEmp','employee','All Employees');
 
 function populateFilters(){
   populateMultiSelect('fSite', uniq(RAW.map(r=>r.site)));
   populateMultiSelect('fSup',  uniq(RAW.map(r=>r.supervisor)));
   populateMultiSelect('fCut',  uniq(RAW.map(r=>r.cutoff)));
   populateMultiSelect('fMon',  uniq(RAW.map(r=>r.month)));
-  fillSel('fEmp',  uniq(RAW.map(r=>r.name)),'All Employees');
+  populateMultiSelect('fEmp',  uniq(RAW.map(r=>r.name)));
   fillSel('fDay',  uniq(RAW.map(r=>r.date).filter(Boolean)),'All Days');
   // Holiday filter only makes sense (and only shows) once a HOLIDAY tab has
   // been uploaded — otherwise every row's holidayName is blank.
@@ -1997,43 +1998,45 @@ function populateFilters(){
 }
 function applyFilters(){
   const sites=MULTI_SEL.site, sups=MULTI_SEL.supervisor, cuts=MULTI_SEL.cutoff,
-        mons=MULTI_SEL.month, hols=MULTI_SEL.holiday;
-  const emp =document.getElementById('fEmp').value;
+        mons=MULTI_SEL.month, hols=MULTI_SEL.holiday, emps=MULTI_SEL.employee;
   const day =document.getElementById('fDay').value;
   FILTERED=RAW.filter(r=>{
     if(sites.length && !sites.includes(r.site)) return false;
     if(sups.length  && !sups.includes(r.supervisor)) return false;
     if(cuts.length  && !cuts.includes(r.cutoff)) return false;
     if(mons.length  && !mons.includes(r.month)) return false;
-    if(emp&&r.name!==emp) return false;
+    if(emps.length  && !emps.includes(r.name)) return false;
     if(day&&r.date!==day) return false;
     if(hols.length  && !hols.includes(r.holidayName)) return false;
     return true;
   });
-  ATTEND_FILTERED=filterAttend(sites,sups,cuts,mons,emp,day);
+  ATTEND_FILTERED=filterAttend(sites,sups,cuts,mons,emps,day);
   activeSup=null;
   document.getElementById('supBanner').classList.remove('on');
   document.getElementById('supCard').classList.remove('drill-active');
   renderAll();
   showToast(`🔍 ${FILTERED.length.toLocaleString()} records matched`);
 }
-function filterAttend(sites,sups,cuts,mons,emp,day){
+function filterAttend(sites,sups,cuts,mons,emps,day){
   if(!hasAttendanceData) return [];
   const dayISO = day ? dateKey(parseDate(day)) : '';
-  const empNorm = emp ? normName(emp) : '';
+  // ATTEND records store names normalized (see computeAttendance) while the
+  // Employee filter's values come from RAW's display names — normalize each
+  // selected name the same way before comparing.
+  const empNorms = emps.length ? emps.map(normName) : [];
   return ATTEND.filter(a=>{
     if(sites.length && !sites.includes(a.site)) return false;
     if(sups.length  && !sups.includes(a.supervisor)) return false;
     if(cuts.length  && !cuts.includes(a.cutoff)) return false;
     if(mons.length  && !mons.includes(a.month)) return false;
-    if(empNorm&&a.name!==empNorm) return false;
+    if(empNorms.length && !empNorms.includes(a.name)) return false;
     if(dayISO&&a.dateKey!==dayISO) return false;
     return true;
   });
 }
 function resetFilters(){
-  ['fSite','fSup','fCut','fMon','fHol'].forEach(resetMultiSelectUI);
-  ['fEmp','fDay'].forEach(id=>document.getElementById(id).value='');
+  ['fSite','fSup','fCut','fMon','fHol','fEmp'].forEach(resetMultiSelectUI);
+  document.getElementById('fDay').value='';
   activeSup=null;
   document.getElementById('supBanner').classList.remove('on');
   document.getElementById('supCard').classList.remove('drill-active');
