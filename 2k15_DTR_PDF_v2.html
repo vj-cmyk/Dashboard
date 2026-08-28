@@ -1241,6 +1241,7 @@ const CLR = {
 let RAW=[], FILTERED=[];
 let ROSTER=[], LEAVE_SET=new Set(), ATTEND=[], ATTEND_FILTERED=[];
 let LAST_DTR_DATE={}; // normName -> Date of their most recent DTR punch (for attrition list "Last DTR Punch")
+let DATE_CUTOFF_MAP={}, DATE_MONTH_MAP={}; // dateKey -> Cutoff/Month label, sourced from RAW
 let HOLIDAY_MAP={}; // dateKey -> {name, type, payCode} — from optional HOLIDAY tab
 let REPORT_START=null, REPORT_END=null;
 let UNROSTERED_EMPLOYEES=[];
@@ -1664,6 +1665,7 @@ function computeAttendance(){
     if(r.cutoff && !dateCutoffMap[dk]) dateCutoffMap[dk]=r.cutoff;
     if(r.month && !dateMonthMap[dk]) dateMonthMap[dk]=r.month;
   });
+  DATE_CUTOFF_MAP=dateCutoffMap; DATE_MONTH_MAP=dateMonthMap;
 
   // Observed reporting window = min/max date across DTR — guarded against a
   // single corrupted date (e.g. a leaked Excel serial) blowing this range out
@@ -2287,19 +2289,18 @@ function renderAttendanceKPIs(a){
   set('kOnLeave',  leave.toLocaleString(),    new Set(leaveRows.map(x=>x.name)).size+' employees');
   set('kAbsRate',  absRate.toFixed(1)+'%',    'vs '+presRate.toFixed(1)+'% present');
 
-  // Count distinct ATTRITED employees who actually appear in the CURRENTLY
-  // FILTERED attendance data (`a`) — not a fixed full-upload date range.
-  // (Previously this used REPORT_START/REPORT_END, which are set once at
-  // file upload from the min/max date across the ENTIRE file, so the count
-  // never changed no matter what Cutoff/Month/etc. was selected.) An
-  // attrited employee's attendance window already stops at their attrition
-  // date, so once a filter's period falls entirely after that date they
-  // naturally drop out of `a` — this stays correct without extra date-range
-  // logic here.
-  const attritedCount = new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
+  // Attrition count/list are derived from getFilteredAttritions(), which
+  // checks each ATTRITED employee's ACTUAL attrition date against the
+  // currently active Site/Supervisor/Cutoff/Month/Employee/Day filters —
+  // NOT from presence in `a`. (Presence in `a` was still wrong: an employee
+  // who attrited in August has PRESENT rows in July too, and those July rows
+  // also carry attrited:true, so filtering to July still pulled them in as
+  // an "attrition" even though they didn't attrite until August.)
+  const attritions = getFilteredAttritions();
+  const attritedCount = attritions.length;
   const noteEl=document.getElementById('attritionNote');
   if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period (click for details)` : '';
-  renderAttritionList(a);
+  renderAttritionList(attritions);
   drawAbsRateSparkline(workRows);
 }
 
@@ -2328,28 +2329,72 @@ function computeTenure(startDate, endDate){
   return yrs+' yr'+(yrs!==1?'s':'')+' '+mos+' mo'+(mos!==1?'s':'');
 }
 
-/* Builds the attrited-employee detail table, scoped to whichever employees
-   are ATTRITED and present in the CURRENTLY FILTERED attendance data `a` —
-   i.e. exactly the same set the "N attritions this period" count above is
-   derived from, so the two always agree with each other. */
-function renderAttritionList(a){
+/* DATE_CUTOFF_MAP/DATE_MONTH_MAP only have entries for dates where at least
+   one DTR row exists somewhere in the file. An attrition landing on a date
+   with ZERO company-wide DTR activity (e.g. a Saturday/Sunday nobody
+   worked) has no direct entry — previously that meant it silently failed
+   EVERY Cutoff/Month filter check, even though "no filter" still showed it.
+   This walks outward day-by-day to the nearest date that DOES have an
+   entry (cutoff/month periods run 15-16 days, so a same-period weekday is
+   always found well within the search window) and uses that instead. */
+function resolveDateLabel(map, dateObj, maxDaysSearch){
+  if(!dateObj) return undefined;
+  maxDaysSearch = maxDaysSearch || 10;
+  const dk=dateKey(dateObj);
+  if(map[dk]) return map[dk];
+  for(let delta=1; delta<=maxDaysSearch; delta++){
+    const before=new Date(dateObj); before.setDate(before.getDate()-delta);
+    const beforeKey=dateKey(before);
+    if(map[beforeKey]) return map[beforeKey];
+    const after=new Date(dateObj); after.setDate(after.getDate()+delta);
+    const afterKey=dateKey(after);
+    if(map[afterKey]) return map[afterKey];
+  }
+  return undefined;
+}
+
+/* Checks each ATTRITED roster employee's ACTUAL attrition date against the
+   currently active Site/Supervisor/Cutoff/Month/Employee/Day filters —
+   this is the source of truth for both the "N attritions" count and the
+   detail list, so they always agree with each other and with the filter
+   bar. Filtering to July now correctly excludes an employee who attrited
+   in August, even though that employee still has July attendance rows. */
+function getFilteredAttritions(){
+  const sites=MULTI_SEL.site, sups=MULTI_SEL.supervisor, cuts=MULTI_SEL.cutoff,
+        mons=MULTI_SEL.month, emps=MULTI_SEL.employee;
+  const dayEl=document.getElementById('fDay');
+  const day=dayEl?dayEl.value:'';
+  const dayISO=day?dateKey(parseDate(day)):'';
+  const empNorms=emps.length?emps.map(normName):[];
+  return ROSTER.filter(emp=>{
+    if(emp.status!=='ATTRITED') return false;
+    const attritionDate=emp.dateObj||LAST_DTR_DATE[emp.name]||null;
+    if(!attritionDate) return false;
+    if(sites.length && !sites.includes(emp.site)) return false;
+    if(sups.length && !sups.includes(emp.supervisor) && !sups.includes(emp.tl)) return false;
+    if(empNorms.length && !empNorms.includes(emp.name)) return false;
+    const dk=dateKey(attritionDate);
+    if(cuts.length && !cuts.includes(resolveDateLabel(DATE_CUTOFF_MAP,attritionDate))) return false;
+    if(mons.length && !mons.includes(resolveDateLabel(DATE_MONTH_MAP,attritionDate))) return false;
+    if(dayISO && dk!==dayISO) return false;
+    return true;
+  }).map(emp=>({emp, attritionDate: emp.dateObj||LAST_DTR_DATE[emp.name]||null}));
+}
+
+/* Builds the attrited-employee detail table from the resolved list above —
+   same source the "N attritions this period" count is derived from. */
+function renderAttritionList(attritions){
   const tbody=document.getElementById('attritionBody');
   if(!tbody) return;
-  const names=[...new Set((a||[]).filter(x=>x.attrited).map(x=>x.name))];
-  if(!names.length){
+  if(!attritions || !attritions.length){
     tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:14px">No attritions in the filtered period</td></tr>';
     return;
   }
-  const rows=names.map(nm=>{
-    const emp=ROSTER.find(e=>e.name===nm);
-    if(!emp) return null;
-    const attritionDate=emp.dateObj||LAST_DTR_DATE[nm]||null;
-    return {
-      name:emp.displayName||nm, empId:emp.empId||'—', site:emp.site||'—',
-      sup:emp.supervisor||emp.tl||'—', subUnit:emp.subUnit||'—',
-      startDate:emp.startDate||null, attritionDate, lastPunch:LAST_DTR_DATE[nm]||null
-    };
-  }).filter(Boolean).sort((r1,r2)=>(r2.attritionDate||0)-(r1.attritionDate||0));
+  const rows=attritions.map(({emp,attritionDate})=>({
+    name:emp.displayName||emp.name, empId:emp.empId||'—', site:emp.site||'—',
+    sup:emp.supervisor||emp.tl||'—', subUnit:emp.subUnit||'—',
+    startDate:emp.startDate||null, attritionDate, lastPunch:LAST_DTR_DATE[emp.name]||null
+  })).sort((r1,r2)=>(r2.attritionDate||0)-(r1.attritionDate||0));
   tbody.innerHTML=rows.map(r=>`<tr>
     <td>${r.name}</td>
     <td>${r.empId}</td>
