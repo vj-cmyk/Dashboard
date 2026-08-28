@@ -869,9 +869,33 @@ footer span{color:var(--fd-indigo);font-weight:700}
   <!-- ATTENDANCE KPIs -->
   <div class="sl" id="attSectionLbl" style="display:none">
     🧑‍💼 Attendance &amp; Absenteeism
-    <span id="attritionNote" style="font-size:10.5px;font-weight:700;color:var(--muted);
+    <span id="attritionNote" onclick="toggleAttritionPanel()" style="font-size:10.5px;font-weight:700;color:var(--muted);
       background:var(--surface);border:1px solid var(--border);padding:2px 9px;border-radius:6px;
-      text-transform:none;letter-spacing:0"></span>
+      text-transform:none;letter-spacing:0;cursor:pointer;user-select:none"></span>
+  </div>
+  <div class="tbl-box" id="attritionBox" style="display:none">
+    <div class="tbl-hdr">
+      <div class="tbl-ttl" style="color:#f59e0b">⚠️ Attritions in Filtered Period</div>
+      <div class="tbl-ctrls">
+        <span style="font-size:11.5px;color:var(--muted)">Click the ⚠️ note above to hide/show · respects the currently active filters</span>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Name ↕</th>
+          <th>Employee ID ↕</th>
+          <th>Site ↕</th>
+          <th>Supervisor / TL ↕</th>
+          <th>Sub-Unit ↕</th>
+          <th>Start Date ↕</th>
+          <th>Attrition Date ↕</th>
+          <th>Tenure ↕</th>
+          <th>Last DTR Punch ↕</th>
+        </tr></thead>
+        <tbody id="attritionBody"></tbody>
+      </table>
+    </div>
   </div>
   <div class="kpi-grid" id="attKpiGrid" style="display:none">
     <div class="kpi" style="--ac:var(--fd-indigo)">
@@ -1216,6 +1240,7 @@ const CLR = {
 /* ═══ STATE ═══ */
 let RAW=[], FILTERED=[];
 let ROSTER=[], LEAVE_SET=new Set(), ATTEND=[], ATTEND_FILTERED=[];
+let LAST_DTR_DATE={}; // normName -> Date of their most recent DTR punch (for attrition list "Last DTR Punch")
 let HOLIDAY_MAP={}; // dateKey -> {name, type, payCode} — from optional HOLIDAY tab
 let REPORT_START=null, REPORT_END=null;
 let UNROSTERED_EMPLOYEES=[];
@@ -1626,6 +1651,7 @@ function computeAttendance(){
     presentSet.add(key);
     if(!lastDTRDate[nm] || r.dateObj>lastDTRDate[nm]) lastDTRDate[nm]=r.dateObj;
   });
+  LAST_DTR_DATE=lastDTRDate;
 
   // Date -> Cutoff/Month lookup, sourced from the DTR tab. Attendance records
   // are generated per calendar day independent of the DTR rows, so without
@@ -2261,12 +2287,80 @@ function renderAttendanceKPIs(a){
   set('kOnLeave',  leave.toLocaleString(),    new Set(leaveRows.map(x=>x.name)).size+' employees');
   set('kAbsRate',  absRate.toFixed(1)+'%',    'vs '+presRate.toFixed(1)+'% present');
 
-  const attritedCount = REPORT_START && REPORT_END
-    ? ROSTER.filter(e=>e.status==='ATTRITED' && e.dateObj && e.dateObj>=REPORT_START && e.dateObj<=REPORT_END).length
-    : new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
+  // Count distinct ATTRITED employees who actually appear in the CURRENTLY
+  // FILTERED attendance data (`a`) — not a fixed full-upload date range.
+  // (Previously this used REPORT_START/REPORT_END, which are set once at
+  // file upload from the min/max date across the ENTIRE file, so the count
+  // never changed no matter what Cutoff/Month/etc. was selected.) An
+  // attrited employee's attendance window already stops at their attrition
+  // date, so once a filter's period falls entirely after that date they
+  // naturally drop out of `a` — this stays correct without extra date-range
+  // logic here.
+  const attritedCount = new Set(a.filter(x=>x.attrited).map(x=>x.name)).size;
   const noteEl=document.getElementById('attritionNote');
-  if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period` : '';
+  if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period (click for details)` : '';
+  renderAttritionList(a);
   drawAbsRateSparkline(workRows);
+}
+
+let ATTRITION_PANEL_OPEN=false;
+function toggleAttritionPanel(){
+  const box=document.getElementById('attritionBox');
+  if(!box) return;
+  ATTRITION_PANEL_OPEN=!ATTRITION_PANEL_OPEN;
+  box.style.display=ATTRITION_PANEL_OPEN?'':'none';
+}
+
+function fmtDateShort(d){
+  if(!d) return '—';
+  return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear();
+}
+
+/* Tenure as "X yrs Y mos" between Start Date and Attrition Date */
+function computeTenure(startDate, endDate){
+  if(!startDate || !endDate || endDate<startDate) return '—';
+  let months=(endDate.getFullYear()-startDate.getFullYear())*12+(endDate.getMonth()-startDate.getMonth());
+  if(endDate.getDate()<startDate.getDate()) months--;
+  if(months<0) months=0;
+  const yrs=Math.floor(months/12), mos=months%12;
+  if(yrs===0) return mos+' mo'+(mos!==1?'s':'');
+  if(mos===0) return yrs+' yr'+(yrs!==1?'s':'');
+  return yrs+' yr'+(yrs!==1?'s':'')+' '+mos+' mo'+(mos!==1?'s':'');
+}
+
+/* Builds the attrited-employee detail table, scoped to whichever employees
+   are ATTRITED and present in the CURRENTLY FILTERED attendance data `a` —
+   i.e. exactly the same set the "N attritions this period" count above is
+   derived from, so the two always agree with each other. */
+function renderAttritionList(a){
+  const tbody=document.getElementById('attritionBody');
+  if(!tbody) return;
+  const names=[...new Set((a||[]).filter(x=>x.attrited).map(x=>x.name))];
+  if(!names.length){
+    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:14px">No attritions in the filtered period</td></tr>';
+    return;
+  }
+  const rows=names.map(nm=>{
+    const emp=ROSTER.find(e=>e.name===nm);
+    if(!emp) return null;
+    const attritionDate=emp.dateObj||LAST_DTR_DATE[nm]||null;
+    return {
+      name:emp.displayName||nm, empId:emp.empId||'—', site:emp.site||'—',
+      sup:emp.supervisor||emp.tl||'—', subUnit:emp.subUnit||'—',
+      startDate:emp.startDate||null, attritionDate, lastPunch:LAST_DTR_DATE[nm]||null
+    };
+  }).filter(Boolean).sort((r1,r2)=>(r2.attritionDate||0)-(r1.attritionDate||0));
+  tbody.innerHTML=rows.map(r=>`<tr>
+    <td>${r.name}</td>
+    <td>${r.empId}</td>
+    <td>${r.site}</td>
+    <td>${r.sup}</td>
+    <td>${r.subUnit}</td>
+    <td>${fmtDateShort(r.startDate)}</td>
+    <td>${fmtDateShort(r.attritionDate)}</td>
+    <td>${computeTenure(r.startDate,r.attritionDate)}</td>
+    <td>${fmtDateShort(r.lastPunch)}</td>
+  </tr>`).join('');
 }
 
 /* Lightweight canvas sparkline (no Chart.js instance) for the hero Absenteeism Rate KPI */
