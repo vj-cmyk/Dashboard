@@ -841,6 +841,12 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="kpi-val" id="kUnworkedHol">—</div>
       <div class="kpi-sub" id="kUnworkedHolSub">—</div>
     </div>
+    <div class="kpi" style="--ac:var(--fd-indigo)" title="Total Billed + Unworked Regular Holiday Pay — what should actually be paid out, including employees owed holiday pay with no DTR row">
+      <div class="kpi-ico">🧮</div>
+      <div class="kpi-lbl">True Payroll Obligation</div>
+      <div class="kpi-val" id="kTruePayroll">—</div>
+      <div class="kpi-sub" id="kTruePayrollSub">—</div>
+    </div>
   </div>
 
   <!-- HOLIDAY BREAKDOWN (from HOLIDAY tab) -->
@@ -2094,7 +2100,8 @@ function renderAll(){
   // behind hasAttendanceData, since that section holds every monetary tile.
   // The function itself shows a clear "no SCHEDULE tab" state when
   // attendance data isn't available, rather than a misleading ₱0.
-  renderUnworkedHolidayKPI(hasAttendanceData ? ATTEND_FILTERED : null);
+  const unworkedHolTotal = renderUnworkedHolidayKPI(hasAttendanceData ? ATTEND_FILTERED : null);
+  renderTruePayrollKPI(sumF(d,'totalBilled'), unworkedHolTotal);
   if(hasAttendanceData){
     // HOLIDAY-status days are excluded from the KPI tiles, Absenteeism by
     // Site/Supervisor charts, and the Absence Detail table below — they're
@@ -2335,7 +2342,7 @@ function renderUnworkedHolidayKPI(a){
     // misleading ₱0 that would look like "no unworked holidays occurred".
     if(valEl){ valEl.textContent='—'; }
     if(subEl) subEl.textContent='Requires SCHEDULE tab';
-    return;
+    return null;
   }
   const rows=a.filter(x=>
     x.status==='HOLIDAY' && !x.hasPunch &&
@@ -2345,6 +2352,25 @@ function renderUnworkedHolidayKPI(a){
   const uniqEmp=new Set(rows.map(x=>x.name)).size;
   if(valEl){ valEl.textContent='₱'+fmtWhole(total); autoFitKpiVal(valEl); }
   if(subEl) subEl.textContent=rows.length.toLocaleString()+' employee-day'+(rows.length!==1?'s':'')+' · '+uniqEmp+' employee'+(uniqEmp!==1?'s':'');
+  return total;
+}
+
+/* Combined "what should actually be paid out" figure: Total Billed (strictly
+   what the DTR tab reports) + Unworked Regular Holiday Pay (owed but absent
+   from the DTR entirely, since there's no punch to generate a row). Shows
+   "—" whenever the unworked-holiday figure itself is unavailable (no
+   SCHEDULE tab), since a partial combined total would be misleading. */
+function renderTruePayrollKPI(billedTotal, unworkedTotal){
+  const valEl=document.getElementById('kTruePayroll');
+  const subEl=document.getElementById('kTruePayrollSub');
+  if(unworkedTotal===null){
+    if(valEl) valEl.textContent='—';
+    if(subEl) subEl.textContent='Requires SCHEDULE tab';
+    return;
+  }
+  const combined=billedTotal+unworkedTotal;
+  if(valEl){ valEl.textContent='₱'+fmtWhole(combined); autoFitKpiVal(valEl); }
+  if(subEl) subEl.textContent='Billed ₱'+fmtWhole(billedTotal)+' + Unworked Hol ₱'+fmtWhole(unworkedTotal);
 }
 
 let ATTRITION_PANEL_OPEN=false;
