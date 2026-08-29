@@ -835,6 +835,12 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="kpi-val" id="kSpcHolOTHrs">—</div>
       <div class="kpi-sub" id="kSpcHolOTHrsSub">—</div>
     </div>
+    <div class="kpi" style="--ac:var(--fd-lemon)" title="DOLE-mandated 100% pay for employees with no DTR timestamp on a Regular Holiday">
+      <div class="kpi-ico">🎉</div>
+      <div class="kpi-lbl">Unworked Regular Holiday Pay</div>
+      <div class="kpi-val" id="kUnworkedHol">—</div>
+      <div class="kpi-sub" id="kUnworkedHolSub">—</div>
+    </div>
   </div>
 
   <!-- HOLIDAY BREAKDOWN (from HOLIDAY tab) -->
@@ -1747,7 +1753,7 @@ function computeAttendance(){
         site:rowSite, supervisor:(asOf&&asOf.supervisor)||emp.supervisor,
         cutoff:dateCutoffMap[dk]||'', month:dateMonthMap[dk]||'',
         holidayName: holInfo?holInfo.name:'', holidayType: holInfo?holInfo.type:'',
-        status, attrited:emp.status==='ATTRITED'});
+        hasPunch, status, attrited:emp.status==='ATTRITED'});
     }
   });
 
@@ -1768,6 +1774,7 @@ function computeAttendance(){
     out.push({date:r.dateObj, dateKey:dateKey(r.dateObj), name:nm,
       site:r.site||'', supervisor:r.supervisor||'',
       cutoff:r.cutoff||'', month:r.month||'',
+      holidayName:'', holidayType:'', hasPunch:true,
       status:'PRESENT', attrited:false, unrostered:true});
   });
   if(unrostered.size) UNROSTERED_EMPLOYEES=[...unrostered];
@@ -2083,14 +2090,18 @@ function renderAll(){
   renderIrrData(d);
   renderDTRData(d);
   renderHolidayBreakdown(d);
+  // Lives in Key Performance Metrics (always visible) rather than gated
+  // behind hasAttendanceData, since that section holds every monetary tile.
+  // The function itself shows a clear "no SCHEDULE tab" state when
+  // attendance data isn't available, rather than a misleading ₱0.
+  renderUnworkedHolidayKPI(hasAttendanceData ? ATTEND_FILTERED : null);
   if(hasAttendanceData){
     // HOLIDAY-status days are excluded from the KPI tiles, Absenteeism by
     // Site/Supervisor charts, and the Absence Detail table below — they're
     // non-working days, not something to count toward "expected" workdays
     // or penalize as absence. The Daily Attendance Trend chart is the one
-    // exception: it renders its own dedicated "Holiday" segment so each
-    // day's bar still tallies to the full headcount, so it gets the
-    // unfiltered ATTEND_FILTERED instead.
+    // exception — it needs the HOLIDAY-status records themselves, so it
+    // gets the unfiltered ATTEND_FILTERED instead.
     const attendWork = ATTEND_FILTERED.filter(x=>x.status!=='HOLIDAY');
     renderAttendanceKPIs(attendWork);
     renderAbsSiteChart(attendWork);
@@ -2302,6 +2313,38 @@ function renderAttendanceKPIs(a){
   if(noteEl) noteEl.textContent = attritedCount>0 ? `⚠️ ${attritedCount} attrition${attritedCount>1?'s':''} this period (click for details)` : '';
   renderAttritionList(attritions);
   drawAbsRateSparkline(workRows);
+}
+
+/* DOLE mandates 100% of the daily wage on a Regular Holiday even when the
+   employee didn't report to work — but since the DTR upload only contains
+   rows for people who actually timestamped, those employees have ZERO
+   rows anywhere in the file for that date, so nothing else in the
+   dashboard captures this pay obligation. This tile fills that gap: for
+   every ATTEND record where status is HOLIDAY, the holiday type is
+   Regular, and the employee has no punch that day (hasPunch===false),
+   credit them a full day's pay at the flat rate (FULL_BASE, ₱989.53 —
+   confirmed as the same rate for every employee in this file). Kept as a
+   separate tile rather than folded into Total Billed, since Total Billed
+   is meant to strictly reflect what the DTR tab itself reports. */
+function renderUnworkedHolidayKPI(a){
+  const valEl=document.getElementById('kUnworkedHol');
+  const subEl=document.getElementById('kUnworkedHolSub');
+  if(a===null){
+    // No SCHEDULE tab uploaded, so there's no roster/holiday-resolution
+    // engine to compute this from — show that plainly instead of a
+    // misleading ₱0 that would look like "no unworked holidays occurred".
+    if(valEl){ valEl.textContent='—'; }
+    if(subEl) subEl.textContent='Requires SCHEDULE tab';
+    return;
+  }
+  const rows=a.filter(x=>
+    x.status==='HOLIDAY' && !x.hasPunch &&
+    x.holidayType && x.holidayType.toLowerCase().includes('regular')
+  );
+  const total=rows.length*FULL_BASE;
+  const uniqEmp=new Set(rows.map(x=>x.name)).size;
+  if(valEl){ valEl.textContent='₱'+fmtWhole(total); autoFitKpiVal(valEl); }
+  if(subEl) subEl.textContent=rows.length.toLocaleString()+' employee-day'+(rows.length!==1?'s':'')+' · '+uniqEmp+' employee'+(uniqEmp!==1?'s':'');
 }
 
 let ATTRITION_PANEL_OPEN=false;
@@ -3414,6 +3457,14 @@ function generateTimesheet(){
       if(holVal>0) holiday = holVal.toFixed(1);
     } else if(onLeave && !isWeekend){
       regHrs='Leave';
+    } else {
+      // No DTR row this date (no timestamp) and not on leave. If this is a
+      // Regular Holiday, DOLE still mandates 100% of the daily wage even
+      // without a punch — credit the same 8.0 hrs shown for a worked
+      // Regular Holiday, so the printed timesheet reflects what's actually
+      // owed, not just what the DTR happened to capture.
+      const typeCheck=((holInfo&&holInfo.type)||'').toLowerCase().replace(/[\s-]/g,'');
+      if(typeCheck.includes('regular')) holiday='8.0';
     }
     // No shift shown for Regular Holidays AND Special Non-working Holidays —
     // both are non-working days by DOLE classification. Deliberately does
