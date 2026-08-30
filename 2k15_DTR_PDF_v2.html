@@ -714,6 +714,8 @@ footer span{color:var(--fd-indigo);font-weight:700}
   </div>
   <div class="hdr-r">
     <div class="badge" id="recBadge">No Data</div>
+    <div class="badge" id="unrosterBadge" style="display:none;background:#fef3c7;border-color:#f59e0b;color:#92400e;cursor:pointer"
+      title="Click to see which employees" onclick="showUnrosteredList()"></div>
     <button class="up-btn" onclick="document.getElementById('fileIn').click()">⬆ Upload File</button>
     <input type="file" id="fileIn" accept=".xlsx,.xls,.csv" onchange="handleUpload(event)">
   </div>
@@ -835,7 +837,7 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="kpi-val" id="kSpcHolOTHrs">—</div>
       <div class="kpi-sub" id="kSpcHolOTHrsSub">—</div>
     </div>
-    <div class="kpi" style="--ac:var(--fd-lemon)" title="DOLE-mandated 100% pay for employees with no DTR timestamp on a Regular Holiday">
+    <div class="kpi" style="--ac:var(--fd-lemon);cursor:pointer" title="DOLE-mandated 100% pay for employees with no DTR timestamp on a Regular Holiday — click for details" onclick="toggleUnworkedHolPanel()">
       <div class="kpi-ico">🎉</div>
       <div class="kpi-lbl">Unworked Regular Holiday Pay</div>
       <div class="kpi-val" id="kUnworkedHol">—</div>
@@ -849,6 +851,31 @@ footer span{color:var(--fd-indigo);font-weight:700}
     </div>
   </div>
 
+  <!-- UNWORKED REGULAR HOLIDAY PAY DETAIL -->
+  <div class="tbl-box" id="unworkedHolBox" style="display:none">
+    <div class="tbl-hdr">
+      <div class="tbl-ttl" style="color:#f59e0b">🎉 Unworked Regular Holiday Pay — Detail</div>
+      <div class="tbl-ctrls">
+        <span style="font-size:11.5px;color:var(--muted)">Click the tile above to hide/show · respects the currently active filters</span>
+        <button class="exp-btn" onclick="exportUnworkedHol()">⬇ Export CSV</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Name ↕</th>
+          <th>Employee ID ↕</th>
+          <th>Site ↕</th>
+          <th>Supervisor / TL ↕</th>
+          <th>Date ↕</th>
+          <th>Holiday Name ↕</th>
+          <th>Amount ↕</th>
+        </tr></thead>
+        <tbody id="unworkedHolBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- HOLIDAY BREAKDOWN (from HOLIDAY tab) -->
   <div class="sl" id="holSectionLbl" style="display:none">🎉 Holiday Breakdown</div>
   <div class="tbl-box" id="holBreakdownBox" style="display:none">
@@ -856,6 +883,7 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="tbl-ttl" style="color:#f59e0b">🎉 Holidays in Filtered Period — by Specific Type</div>
       <div class="tbl-ctrls">
         <span style="font-size:11.5px;color:var(--muted)">Sourced from the HOLIDAY tab · shows the exact holiday name/type behind each Regular/Special flag</span>
+        <button class="exp-btn" onclick="exportHolidayBreakdown()">⬇ Export CSV</button>
       </div>
     </div>
     <div class="tbl-wrap">
@@ -890,6 +918,7 @@ footer span{color:var(--fd-indigo);font-weight:700}
       <div class="tbl-ttl" style="color:#f59e0b">⚠️ Attritions in Filtered Period</div>
       <div class="tbl-ctrls">
         <span style="font-size:11.5px;color:var(--muted)">Click the ⚠️ note above to hide/show · respects the currently active filters</span>
+        <button class="exp-btn" onclick="exportAttritionList()">⬇ Export CSV</button>
       </div>
     </div>
     <div class="tbl-wrap">
@@ -1257,6 +1286,8 @@ let DATE_CUTOFF_MAP={}, DATE_MONTH_MAP={}; // dateKey -> Cutoff/Month label, sou
 let HOLIDAY_MAP={}; // dateKey -> {name, type, payCode} — from optional HOLIDAY tab
 let REPORT_START=null, REPORT_END=null;
 let UNROSTERED_EMPLOYEES=[];
+let HOL_BREAKDOWN_ROWS=[]; // last-rendered Holiday Breakdown groups, for CSV export
+let UNWORKED_HOL_ROWS=[]; // last-rendered Unworked Regular Holiday Pay rows, for CSV export/drilldown
 let hasAttendanceData=false;
 let DTR_DISP=[], IRR_DISP=[], ABS_DISP=[];
 let dtrPage=1, irrPage=1, absPage=1;
@@ -1336,6 +1367,18 @@ function processFile(file){
       document.getElementById('recBadge').textContent=RAW.length.toLocaleString()+' Records';
       document.getElementById('drillHint').classList.add('on');
       const attNote = hasAttendanceData ? ' + attendance tracking' : '';
+      // Persistent header badge — the toast below auto-dismisses after 3.2s
+      // and leaves no trace, so anyone who misses that window would
+      // otherwise never know some employees have zero attendance-side
+      // coverage (excluded from Attrition, Holiday resolution, Absence
+      // tracking). This badge stays visible for the entire session instead.
+      const unrosterBadge=document.getElementById('unrosterBadge');
+      if(UNROSTERED_EMPLOYEES.length){
+        unrosterBadge.style.display='';
+        unrosterBadge.textContent='⚠️ '+UNROSTERED_EMPLOYEES.length+' missing from SCHEDULE';
+      } else {
+        unrosterBadge.style.display='none';
+      }
       const unrosterNote = UNROSTERED_EMPLOYEES.length
         ? ' ⚠️ '+UNROSTERED_EMPLOYEES.length+' employee(s) missing from SCHEDULE tab (counted as Present only, no absence tracking)'
         : '';
@@ -2201,6 +2244,7 @@ function renderHolidayBreakdown(d){
     g.totalPeso += (r.regHol||0)+(r.spcHolD||0)+(r.regHolOTHrs||0)+(r.spcHolOTHrs||0);
   });
   const groups=Object.values(byDate).sort((a,b)=>a.dateObj-b.dateObj);
+  HOL_BREAKDOWN_ROWS=groups;
   if(!groups.length){
     box.style.display='none'; lbl.style.display='none';
     return;
@@ -2231,6 +2275,19 @@ function renderHolidayBreakdown(d){
       <td>₱${fmtN(g.totalPeso)}</td>
     </tr>`;
   }).join('');
+}
+
+function exportHolidayBreakdown(){
+  if(!HOL_BREAKDOWN_ROWS.length){ showToast('⚠️ Nothing to export'); return; }
+  const h=['Date','Holiday Name','Type','Pay Code','Site(s)','Headcount','Reg Hol (Days)','Special Hol (Days)','Reg Hol OT (Hrs)','Spc Hol OT (Hrs)','Total ₱'];
+  const rows=HOL_BREAKDOWN_ROWS.map(g=>{
+    const dd=g.dateObj;
+    const dispDate=(dd.getMonth()+1)+'/'+dd.getDate()+'/'+dd.getFullYear();
+    return [dispDate, g.name||'', g.type||'', g.payCode||'', [...g.sites].sort().join(', '),
+      g.names.size, g.regHolDays||0, g.spcHolDays||0, g.regHolOTHrs||0, g.spcHolOTHrs||0, g.totalPeso];
+  });
+  dlCSV([h,...rows],'Holiday_Breakdown_Export.csv');
+  showToast('⬇ Holiday breakdown exported');
 }
 
 /* ═══ KPIs ═══ */
@@ -2342,6 +2399,8 @@ function renderUnworkedHolidayKPI(a){
     // misleading ₱0 that would look like "no unworked holidays occurred".
     if(valEl){ valEl.textContent='—'; }
     if(subEl) subEl.textContent='Requires SCHEDULE tab';
+    UNWORKED_HOL_ROWS=[];
+    renderUnworkedHolidayList(null);
     return null;
   }
   const rows=a.filter(x=>
@@ -2351,8 +2410,63 @@ function renderUnworkedHolidayKPI(a){
   const total=rows.length*FULL_BASE;
   const uniqEmp=new Set(rows.map(x=>x.name)).size;
   if(valEl){ valEl.textContent='₱'+fmtWhole(total); autoFitKpiVal(valEl); }
-  if(subEl) subEl.textContent=rows.length.toLocaleString()+' employee-day'+(rows.length!==1?'s':'')+' · '+uniqEmp+' employee'+(uniqEmp!==1?'s':'');
+  if(subEl) subEl.textContent=rows.length.toLocaleString()+' employee-day'+(rows.length!==1?'s':'')+' · '+uniqEmp+' employee'+(uniqEmp!==1?'s':'')+' (click for details)';
+  UNWORKED_HOL_ROWS=rows;
+  renderUnworkedHolidayList(rows);
   return total;
+}
+
+let UNWORKED_HOL_PANEL_OPEN=false;
+function toggleUnworkedHolPanel(){
+  const box=document.getElementById('unworkedHolBox');
+  if(!box) return;
+  UNWORKED_HOL_PANEL_OPEN=!UNWORKED_HOL_PANEL_OPEN;
+  box.style.display=UNWORKED_HOL_PANEL_OPEN?'':'none';
+}
+
+/* Builds the Unworked Regular Holiday Pay detail table — same rows the KPI
+   tile's count/total are derived from, so they always agree. Each row is
+   one employee-day credited at the flat FULL_BASE rate. */
+function renderUnworkedHolidayList(rows){
+  const tbody=document.getElementById('unworkedHolBody');
+  if(!tbody) return;
+  if(rows===null){
+    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:14px">Requires SCHEDULE tab</td></tr>';
+    return;
+  }
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:14px">No unworked Regular Holidays in the filtered period</td></tr>';
+    return;
+  }
+  const out=rows.map(x=>{
+    const emp=ROSTER.find(e=>e.name===x.name);
+    return {
+      name:(emp&&emp.displayName)||x.name, empId:(emp&&emp.empId)||'—',
+      site:x.site||'—', sup:x.supervisor||(emp&&emp.tl)||'—',
+      date:x.date, holidayName:x.holidayName||'—'
+    };
+  }).sort((r1,r2)=>(r2.date||0)-(r1.date||0));
+  tbody.innerHTML=out.map(r=>`<tr>
+    <td>${r.name}</td>
+    <td>${r.empId}</td>
+    <td>${r.site}</td>
+    <td>${r.sup}</td>
+    <td>${fmtDateShort(r.date)}</td>
+    <td>${r.holidayName}</td>
+    <td>₱${fmtN(FULL_BASE)}</td>
+  </tr>`).join('');
+}
+
+function exportUnworkedHol(){
+  if(!UNWORKED_HOL_ROWS.length){ showToast('⚠️ Nothing to export'); return; }
+  const h=['Name','Employee ID','Site','Supervisor / TL','Date','Holiday Name','Amount'];
+  const rows=UNWORKED_HOL_ROWS.map(x=>{
+    const emp=ROSTER.find(e=>e.name===x.name);
+    return [(emp&&emp.displayName)||x.name, (emp&&emp.empId)||'', x.site||'',
+      x.supervisor||(emp&&emp.tl)||'', fmtDateShort(x.date), x.holidayName||'', FULL_BASE];
+  });
+  dlCSV([h,...rows],'Unworked_Regular_Holiday_Pay_Export.csv');
+  showToast('⬇ Unworked Regular Holiday Pay exported');
 }
 
 /* Combined "what should actually be paid out" figure: Total Billed (strictly
@@ -2475,6 +2589,20 @@ function renderAttritionList(attritions){
     <td>${computeTenure(r.startDate,r.attritionDate)}</td>
     <td>${fmtDateShort(r.lastPunch)}</td>
   </tr>`).join('');
+}
+
+function exportAttritionList(){
+  const attritions=getFilteredAttritions();
+  if(!attritions.length){ showToast('⚠️ Nothing to export'); return; }
+  const h=['Name','Employee ID','Site','Supervisor / TL','Sub-Unit','Start Date','Attrition Date','Tenure','Last DTR Punch'];
+  const rows=attritions.map(({emp,attritionDate})=>{
+    const lastPunch=LAST_DTR_DATE[emp.name]||null;
+    return [emp.displayName||emp.name, emp.empId||'', emp.site||'', emp.supervisor||emp.tl||'',
+      emp.subUnit||'', fmtDateShort(emp.startDate), fmtDateShort(attritionDate),
+      computeTenure(emp.startDate,attritionDate), fmtDateShort(lastPunch)];
+  });
+  dlCSV([h,...rows],'Attrition_List_Export.csv');
+  showToast('⬇ Attrition list exported');
 }
 
 /* Lightweight canvas sparkline (no Chart.js instance) for the hero Absenteeism Rate KPI */
@@ -3660,6 +3788,15 @@ function generateTimesheet(){
 
 /* ═══ TOAST ═══ */
 let tt;
+function showUnrosteredList(){
+  if(!UNROSTERED_EMPLOYEES.length) return;
+  alert('Employees present in the DTR tab but missing from the SCHEDULE tab:\n\n'
+    + UNROSTERED_EMPLOYEES.slice().sort().join('\n')
+    + '\n\nThese employees are counted as Present in Total Billed/DTR figures, '
+    + 'but excluded from Attrition, Holiday pay resolution, and Absence tracking '
+    + 'since there\'s no roster entry (site/supervisor/status) to work from. '
+    + 'Add them to the SCHEDULE tab for full coverage.');
+}
 function showToast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg;t.classList.add('on');
