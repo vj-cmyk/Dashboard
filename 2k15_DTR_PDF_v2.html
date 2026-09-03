@@ -1461,6 +1461,13 @@ function normalizeRows(rows){
     // the monetary 'Reg Hol OT (Hours)' / 'Special Hol (Hours)' fields above)
     const regHolOTHrs = gn(r,['Reg ular Hol OT (Hours)','Regular Hol OT (Hours)','Reg Hol OT (Hours)']);
     const spcHolOTHrs = gn(r,['Special Hol (Hours)','Special Hol Hours']);
+    // PDF-specific holiday-OT hours — sourced from the EARLY per-punch block
+    // (columns J/L: "Reg Hol OT (Hrs)" / "Spcl Hol OT (Hrs)"), NOT the later
+    // aggregate block above. Kept as separate fields from regHolOTHrs/
+    // spcHolOTHrs (which the dashboard KPI tiles and Holiday Breakdown table
+    // already rely on) so this fix only touches the PDF timesheet.
+    const regHolOTHrsPdf = gn(r,['Reg Hol OT (Hrs)','Regular Hol OT (Hrs)']);
+    const spcHolOTHrsPdf = gn(r,['Spcl Hol OT (Hrs)','Special Hol OT (Hrs)','Special Hol OT (Hours)']);
 
     // Specific holiday detail from the optional HOLIDAY tab (name + DOLE-style
     // type), resolved for THIS row's own site. A holiday scoped to a specific
@@ -1522,7 +1529,8 @@ function normalizeRows(rows){
       minsLate, minsEarly, isTardy, isUT,
       base, otHrs, ndHrs, rdDays, rdHrs, restOT,
       regHol, holDays, regHolOT, spcHolD, spcHolH,
-      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs, hrsRendered, holidayTypePdf,
+      otHrsPdf, regHolDaysPdf, spcHolDaysPdf, rdotHrsPdf, regHolOTHrs, spcHolOTHrs,
+      regHolOTHrsPdf, spcHolOTHrsPdf, hrsRendered, holidayTypePdf,
       holidayName, holidayTypeDetail, holidayPayCode,
       totalBilled, variance, issues, status
     };
@@ -3601,8 +3609,15 @@ function generateTimesheet(){
       timeIn = dtrRow.timeIN||'';
       timeOut = dtrRow.timeOut||'';
       if(!isWeekend && dtrRow.timeIN && dtrRow.timeOut && dtrRow.hrsRendered>0) regHrs=dtrRow.hrsRendered.toFixed(2);
-      if(dtrRow.otHrsPdf>0) apprOT=dtrRow.otHrsPdf.toFixed(1);
+      // APPROVED OT consolidates ALL overtime worked — regular OT plus any
+      // OT worked specifically during a Regular or Special Holiday (columns
+      // J/L: "Reg Hol OT (Hrs)" / "Spcl Hol OT (Hrs)") — into one figure,
+      // rather than splitting holiday-OT into the HOLIDAY column.
+      const totalOT = (dtrRow.otHrsPdf||0) + (dtrRow.regHolOTHrsPdf||0) + (dtrRow.spcHolOTHrsPdf||0);
+      if(totalOT>0) apprOT=totalOT.toFixed(1);
       if(dtrRow.rdotHrsPdf>0) rdot=dtrRow.rdotHrsPdf.toFixed(1);
+      // HOLIDAY column stays as just the base day-credit (converted days ->
+      // hours) — any OT worked on top of it is captured in APPROVED OT above.
       const holDaysVal = dtrRow.regHolDaysPdf>0?dtrRow.regHolDaysPdf:(dtrRow.spcHolDaysPdf>0?dtrRow.spcHolDaysPdf:0);
       const holVal = holDaysVal*8; // convert days -> hours (1 day = 8 hrs)
       // Just the hours here — the specific holiday name/type is already
