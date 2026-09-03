@@ -3617,8 +3617,15 @@ function generateTimesheet(){
       // without a punch — credit the same 8.0 hrs shown for a worked
       // Regular Holiday, so the printed timesheet reflects what's actually
       // owed, not just what the DTR happened to capture.
+      // EXCEPT: never credit a date ON OR AFTER the employee's attrition
+      // date (SCHEDULE tab, Column A) — that date is the FIRST day they're
+      // no longer active (their actual last employed day was the day
+      // before), matching the same exclusive interpretation the dashboard's
+      // Unworked Regular Holiday Pay KPI already uses, so the two stay
+      // consistent with each other.
       const typeCheck=((holInfo&&holInfo.type)||'').toLowerCase().replace(/[\s-]/g,'');
-      if(typeCheck.includes('regular')) holiday='8.0';
+      const afterAttrition = emp.status==='ATTRITED' && emp.dateObj && dCopy>=emp.dateObj;
+      if(typeCheck.includes('regular') && !afterAttrition) holiday='8.0';
     }
     // No shift shown for Regular Holidays AND Special Non-working Holidays —
     // both are non-working days by DOLE classification. Deliberately does
